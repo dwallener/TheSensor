@@ -53,13 +53,13 @@ by the fixed-point reference model.
 
 ### Auditory command `B0`
 
-Send 128 repetitions of two bytes: signed PCM8 left, then signed PCM8 right. The
-core returns 130 bytes:
+Send 128 signed PCM8 left samples followed by the matching 128 signed PCM8 right
+samples. The core returns 130 bytes:
 
 1. `5B` response marker
 2. sixteen low-to-high frequency-band records, each containing eight bytes:
    left energy, right energy, mono energy, signed energy delta, onset strength,
-   signed right-minus-left level, signed phase lead, and stereo confidence
+   signed right-minus-left level, signed phase lead, and conservative stereo confidence
 3. status byte
 
 The fixed ERB-spaced bands run from 125 Hz through 8 kHz. Status bit 0 reports an

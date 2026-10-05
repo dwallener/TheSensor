@@ -15,11 +15,11 @@ The fixed model uses:
 - 16 ERB-spaced bands from 125 Hz to 8 kHz;
 - Q12 resonator, sine, and cosine constants;
 - saturating signed 26-bit resonator state;
-- full-window stereo state plus reusable half-window state for true early/late
-  comparison;
-- 12-bit correlation samples;
+- one full-window and one half-window resonator bank reused between ears;
+- retained left-ear phasors plus per-ear early/late levels;
+- summary-based stereo confidence without a sample-by-sample cross accumulator;
 - leading-one plus three-bit-mantissa amplitude compression;
-- power-of-two normalization for phase and coherence evidence.
+- power-of-two normalization for phase evidence.
 
 The centre frequencies and coefficient tuples are frozen in `SPEC.md`; the tests
 verify that the generated values remain bit-for-bit identical. The model

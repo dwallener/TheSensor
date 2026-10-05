@@ -1592,7 +1592,7 @@ the serialized ordering and channel meanings SHALL remain stable.
 | 4 | `onset_strength` | `uint8` | positive band-energy increase above local floor |
 | 5 | `level_difference` | `int8` | signed right-minus-left band level |
 | 6 | `phase_lead` | `int8` | signed right-leading versus left-leading evidence |
-| 7 | `stereo_confidence` | `uint8` | validity/coherence of the stereo cues |
+| 7 | `stereo_confidence` | `uint8` | conservative validity of the stereo summaries |
 
 Positive channels 5 and 6 SHALL indicate evidence for a source toward the right
 microphone. The precise companding law, full-scale reference, band edges, and
@@ -1718,10 +1718,8 @@ One independent auditory work unit is:
 
 ```text
 0xB0
-128 repetitions of {
-    left_sample_s8,
-    right_sample_s8
-}
+128 × left_sample_s8
+128 × right_sample_s8
 ```
 
 Samples are signed two's-complement bytes. The 128-sample window is 5.333 ms
@@ -1731,8 +1729,13 @@ self-contained and exactly replayable without requiring the ASIC to retain raw P
 between commands. Resonator state SHALL reset at the beginning of every `0xB0`
 work unit. Early/late comparison SHALL be derived entirely within that window.
 
-The core MAY deassert `input_ready` after accepting a stereo sample while its
-shared arithmetic engine updates all band/channel states. The sender SHALL hold the
+The two blocks describe the same sample times. Channel-major ordering allows one
+physical resonator bank to process the left block, retain compact per-band complex
+and level summaries, clear its state, and then process the right block. The sender
+therefore SHALL buffer a complete 256-byte stereo work unit before transmission.
+
+The core MAY deassert `input_ready` after accepting a channel sample while its
+shared arithmetic engine updates all band states. The sender SHALL hold the
 next byte until ready returns. Continuous one-byte-per-clock acceptance is not
 required for audio.
 
@@ -1782,24 +1785,26 @@ layout SHALL be inspected before coordinates or hard placement regions are froze
 The first implementation SHOULD use:
 
 - one shared coefficient multiply or shift-add unit;
-- one shared energy/cross-product unit;
 - fixed band coefficients stored as constants rather than writable RAM;
-- bounded signed state per ear and band;
+- one bounded resonator-state bank reused between ears;
+- compact retained left-ear phasor and level summaries;
 - high-bit or block-scaled products where full precision does not improve the
   canonical byte output;
 - explicit saturation at every narrowing boundary;
 - no divider, square root, logarithm, or arctangent in hardware.
 
 Energy compression MAY use leading-one position plus selected mantissa bits. Phase
-lead MAY use a narrowed cross-product or state-space determinant with confidence
-reported separately. Every approximation SHALL have a bit-accurate software model
+lead MAY use the determinant of the two retained band phasors. Channel-major V0
+does not retain sample-by-sample cross-correlation; stereo confidence SHALL
+therefore be conservatively capped and derived from signal level and inter-ear
+level balance rather than labelled as measured coherence. Every approximation SHALL have a bit-accurate software model
 and error plots against a floating-point reference.
 
 At 24 kHz and 50 MHz, approximately 2,083 ASIC clocks elapse per new stereo sample.
 Because 50% overlap causes every sample to be processed twice, the ASIC receives an
-average of 48,000 stereo sample pairs/s, or about 1,041 clocks per transmitted pair.
-Full-window stereo state plus reusable early/late half-window state requires 64
-band-state updates per pair, leaving about 16 clocks per update for a shared
+average of 48,000 stereo sample pairs/s, or about 1,041 clocks per logical pair.
+The reusable full/half resonator bank requires 32 band-state updates per channel
+sample, leaving about 16 clocks per update for a shared
 sequential datapath before output overhead. I/O
 bandwidth is also small: overlapping 8-bit stereo windows require 96,000 input
 bytes/s, and 130 bytes per hop require 48,750 output bytes/s.
@@ -1835,7 +1840,9 @@ The software representation is acceptable when:
 5. Known level offsets produce correctly signed and monotonic channel 5 values.
 6. Known sample and fractional-sample delays produce correctly signed channel 6
    values over bands where phase is unambiguous.
-7. Uncorrelated stereo noise reduces stereo confidence relative to a shared source.
+7. Uncorrelated stereo noise does not receive greater summary confidence than a
+   level-matched shared source; applications requiring measured coherence retain
+   or reprocess the raw audio.
 8. Clipping, missing samples, channel swap, polarity reversal, and a dead channel
    produce explicit health or confidence changes.
 9. Recorded replay reproduces bit-identical `AudioFrame1024` values and tokens.

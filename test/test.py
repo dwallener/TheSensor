@@ -86,8 +86,9 @@ async def process(dut, current, previous, stall=False):
 
 async def process_audio(dut, left, right, stall=False):
     await send_byte(dut, 0xB0)
-    for left_sample, right_sample in zip(left, right):
+    for left_sample in left:
         await send_byte(dut, left_sample & 0xFF)
+    for right_sample in right:
         await send_byte(dut, right_sample & 0xFF)
     return await receive_response(dut, length=130, stall=stall)
 

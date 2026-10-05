@@ -1,7 +1,8 @@
 /*
  * STEREO_FILTERBANK_V0
  *
- * Input: 0xB0, then 128 signed PCM8 stereo sample pairs at 24 kHz.
+ * Input: 0xB0, then 128 signed PCM8 left samples followed by the matching
+ * 128 signed PCM8 right samples at 24 kHz.
  * Output: 0x5B, sixteen eight-byte band records, and one status byte.
  */
 
@@ -36,36 +37,30 @@ module stereo_filterbank_core (
   localparam [2:0] ST_OUTPUT  = 3'd5;
 
   reg [2:0] state;
-  reg channel_phase;
+  reg channel_select;
   reg [7:0] sample_index;
   reg [3:0] band_index;
   reg [3:0] operation;
-  reg signed [11:0] left_input;
-  reg signed [11:0] right_input;
+  reg signed [11:0] current_input;
 
-  reg signed [25:0] full_left_s1 [0:15];
-  reg signed [25:0] full_left_s2 [0:15];
-  reg signed [25:0] full_right_s1 [0:15];
-  reg signed [25:0] full_right_s2 [0:15];
-  reg signed [25:0] half_left_s1 [0:15];
-  reg signed [25:0] half_left_s2 [0:15];
-  reg signed [25:0] half_right_s1 [0:15];
-  reg signed [25:0] half_right_s2 [0:15];
-
-  reg signed [39:0] cross_accumulator [0:15];
-  reg        [39:0] left_square_accumulator [0:15];
-  reg        [39:0] right_square_accumulator [0:15];
-  reg [7:0] early_level [0:15];
+  // The same resonator bank is used first for the left block and then for the
+  // right block.  Only compact left-ear summaries survive the bank reset.
+  reg signed [25:0] full_s1 [0:15];
+  reg signed [25:0] full_s2 [0:15];
+  reg signed [25:0] half_s1 [0:15];
+  reg signed [25:0] half_s2 [0:15];
+  reg signed [27:0] left_real [0:15];
+  reg signed [27:0] left_imag [0:15];
+  reg [7:0] left_level [0:15];
+  reg [7:0] left_early_level [0:15];
+  reg [7:0] left_late_level [0:15];
+  reg [7:0] right_early_level [0:15];
   reg [7:0] result [0:127];
 
-  reg signed [27:0] temporary_left_real;
-  reg signed [27:0] temporary_left_imag;
-  reg signed [27:0] temporary_right_real;
-  reg signed [27:0] temporary_right_imag;
-  reg signed [27:0] temporary_half_left_real;
-  reg signed [27:0] temporary_half_left_imag;
-  reg signed [27:0] temporary_half_right_real;
-  reg signed [27:0] temporary_half_right_imag;
+  reg signed [27:0] temporary_real;
+  reg signed [27:0] temporary_imag;
+  reg signed [27:0] temporary_half_real;
+  reg signed [27:0] temporary_half_imag;
   reg signed [55:0] phase_product;
   reg signed [55:0] phase_cross;
   reg signed [55:0] dot_product;
@@ -94,44 +89,39 @@ module stereo_filterbank_core (
       (resonator_candidate > 64'sd33554431)
       || (resonator_candidate < -64'sd33554432);
 
-  wire signed [11:0] narrowed_left =
-      saturate_sample($signed({{38{full_left_s1[band_index][25]}},
-                               full_left_s1[band_index]}) >>> 12);
-  wire signed [11:0] narrowed_right =
-      saturate_sample($signed({{38{full_right_s1[band_index][25]}},
-                               full_right_s1[band_index]}) >>> 12);
-
   wire signed [55:0] final_dot = dot_product + multiply_result;
-  wire [7:0] final_left_level = log_compress(
-      abs28(temporary_left_real) + abs28(temporary_left_imag));
   wire [7:0] final_right_level = log_compress(
-      abs28(temporary_right_real) + abs28(temporary_right_imag));
+      abs28(temporary_real) + abs28(temporary_imag));
   wire [7:0] final_mono_level = log_compress(
-      (abs28(temporary_left_real + temporary_right_real)
-       + abs28(temporary_left_imag + temporary_right_imag)) >> 1);
+      (abs28(left_real[band_index] + temporary_real)
+       + abs28(left_imag[band_index] + temporary_imag)) >> 1);
   wire [7:0] final_late_level = log_compress(
-      (abs28(temporary_half_left_real + temporary_half_right_real)
-       + abs28(temporary_half_left_imag + temporary_half_right_imag)) >> 1);
+      abs28(temporary_half_real) + abs28(temporary_half_imag));
+  wire [8:0] early_pair_level =
+      ({2'b0, left_early_level[band_index]}
+       + {2'b0, right_early_level[band_index]}) >> 1;
+  wire [8:0] late_pair_level =
+      ({2'b0, left_late_level[band_index]}
+       + {2'b0, final_late_level}) >> 1;
   wire signed [8:0] level_delta_unscaled =
-      $signed({1'b0, final_late_level})
-      - $signed({1'b0, early_level[band_index]});
+      $signed(late_pair_level) - $signed(early_pair_level);
   wire signed [63:0] level_delta_scaled =
       {{53{level_delta_unscaled[8]}}, level_delta_unscaled, 2'b00};
   wire signed [7:0] final_delta = saturate_byte(level_delta_scaled);
   wire signed [8:0] level_difference_unscaled =
       $signed({1'b0, final_right_level})
-      - $signed({1'b0, final_left_level});
+      - $signed({1'b0, left_level[band_index]});
   wire signed [7:0] final_level_difference = saturate_byte(
       {{55{level_difference_unscaled[8]}}, level_difference_unscaled});
   wire signed [7:0] final_phase = normalize_signed(phase_cross, final_dot);
-  wire [7:0] coherence = coherence_value(
-      cross_accumulator[band_index],
-      left_square_accumulator[band_index],
-      right_square_accumulator[band_index]);
   wire [7:0] confidence_gate = signal_gate(
-      final_left_level, final_right_level);
+      left_level[band_index], final_right_level);
+  wire [8:0] level_mismatch = level_difference_unscaled[8]
+      ? -level_difference_unscaled : level_difference_unscaled;
+  wire [7:0] balance_gate = (level_mismatch >= 9'd32)
+      ? 8'd0 : 8'd255 - {level_mismatch[4:0], 3'b000};
   wire [7:0] final_confidence =
-      (coherence < confidence_gate) ? coherence : confidence_gate;
+      ((confidence_gate < balance_gate) ? confidence_gate : balance_gate) >> 1;
   wire [6:0] result_base = {band_index, 3'b000};
 
   integer i;
@@ -220,18 +210,6 @@ module stereo_filterbank_core (
     end
   endfunction
 
-  function signed [11:0] saturate_sample;
-    input signed [63:0] value;
-    begin
-      if (value > 64'sd2047)
-        saturate_sample = 12'sd2047;
-      else if (value < -64'sd2048)
-        saturate_sample = -12'sd2048;
-      else
-        saturate_sample = value[11:0];
-    end
-  endfunction
-
   function signed [7:0] saturate_byte;
     input signed [63:0] value;
     begin
@@ -308,43 +286,13 @@ module stereo_filterbank_core (
     end
   endfunction
 
-  function [7:0] coherence_value;
-    input signed [39:0] cross_value;
-    input [39:0] left_square;
-    input [39:0] right_square;
-    reg [39:0] cross_abs;
-    reg [63:0] quotient;
-    integer left_highest;
-    integer right_highest;
-    integer bit_index;
-    integer exponent;
-    begin
-      cross_abs = cross_value[39] ? -cross_value : cross_value;
-      left_highest = 0;
-      right_highest = 0;
-      for (bit_index = 0; bit_index < 40; bit_index = bit_index + 1) begin
-        if (left_square[bit_index])
-          left_highest = bit_index;
-        if (right_square[bit_index])
-          right_highest = bit_index;
-      end
-      if ((left_square == 0) || (right_square == 0))
-        coherence_value = 8'd0;
-      else begin
-        exponent = (left_highest + right_highest) >> 1;
-        quotient = ({24'd0, cross_abs} << 8) >> exponent;
-        coherence_value = (quotient > 255) ? 8'hff : quotient[7:0];
-      end
-    end
-  endfunction
-
   function [7:0] signal_gate;
-    input [7:0] left_level;
-    input [7:0] right_level;
+    input [7:0] left_value;
+    input [7:0] right_value;
     reg [7:0] quietest;
     reg [9:0] scaled;
     begin
-      quietest = (left_level < right_level) ? left_level : right_level;
+      quietest = (left_value < right_value) ? left_value : right_value;
       if (quietest <= 40)
         signal_gate = 8'd0;
       else begin
@@ -364,66 +312,34 @@ module stereo_filterbank_core (
       case (operation)
         4'd0: begin
           multiply_a = {{18{resonator_coefficient[13]}}, resonator_coefficient};
-          multiply_b = {{6{full_left_s1[band_index][25]}}, full_left_s1[band_index]};
-          selected_s1 = full_left_s1[band_index];
-          selected_s2 = full_left_s2[band_index];
-          selected_input = left_input;
-        end
-        4'd1: begin
-          multiply_a = {{18{resonator_coefficient[13]}}, resonator_coefficient};
-          multiply_b = {{6{full_right_s1[band_index][25]}}, full_right_s1[band_index]};
-          selected_s1 = full_right_s1[band_index];
-          selected_s2 = full_right_s2[band_index];
-          selected_input = right_input;
-        end
-        4'd2: begin
-          multiply_a = {{18{resonator_coefficient[13]}}, resonator_coefficient};
-          multiply_b = {{6{half_left_s1[band_index][25]}}, half_left_s1[band_index]};
-          selected_s1 = half_left_s1[band_index];
-          selected_s2 = half_left_s2[band_index];
-          selected_input = left_input;
-        end
-        4'd3: begin
-          multiply_a = {{18{resonator_coefficient[13]}}, resonator_coefficient};
-          multiply_b = {{6{half_right_s1[band_index][25]}}, half_right_s1[band_index]};
-          selected_s1 = half_right_s1[band_index];
-          selected_s2 = half_right_s2[band_index];
-          selected_input = right_input;
-        end
-        4'd4: begin
-          multiply_a = {{20{narrowed_left[11]}}, narrowed_left};
-          multiply_b = {{20{narrowed_right[11]}}, narrowed_right};
-        end
-        4'd5: begin
-          multiply_a = {{20{narrowed_left[11]}}, narrowed_left};
-          multiply_b = {{20{narrowed_left[11]}}, narrowed_left};
+          multiply_b = {{6{full_s1[band_index][25]}}, full_s1[band_index]};
+          selected_s1 = full_s1[band_index];
+          selected_s2 = full_s2[band_index];
+          selected_input = current_input;
         end
         default: begin
-          multiply_a = {{20{narrowed_right[11]}}, narrowed_right};
-          multiply_b = {{20{narrowed_right[11]}}, narrowed_right};
+          multiply_a = {{18{resonator_coefficient[13]}}, resonator_coefficient};
+          multiply_b = {{6{half_s1[band_index][25]}}, half_s1[band_index]};
+          selected_s1 = half_s1[band_index];
+          selected_s2 = half_s2[band_index];
+          selected_input = current_input;
         end
       endcase
     end else if (state == ST_EARLY) begin
       case (operation)
-        4'd0: begin multiply_a = cosine_coefficient; multiply_b = half_left_s2[band_index]; end
-        4'd1: begin multiply_a = sine_coefficient; multiply_b = half_left_s2[band_index]; end
-        4'd2: begin multiply_a = cosine_coefficient; multiply_b = half_right_s2[band_index]; end
-        default: begin multiply_a = sine_coefficient; multiply_b = half_right_s2[band_index]; end
+        4'd0: begin multiply_a = cosine_coefficient; multiply_b = half_s2[band_index]; end
+        default: begin multiply_a = sine_coefficient; multiply_b = half_s2[band_index]; end
       endcase
     end else if (state == ST_FINAL) begin
       case (operation)
-        4'd0: begin multiply_a = cosine_coefficient; multiply_b = full_left_s2[band_index]; end
-        4'd1: begin multiply_a = sine_coefficient; multiply_b = full_left_s2[band_index]; end
-        4'd2: begin multiply_a = cosine_coefficient; multiply_b = full_right_s2[band_index]; end
-        4'd3: begin multiply_a = sine_coefficient; multiply_b = full_right_s2[band_index]; end
-        4'd4: begin multiply_a = cosine_coefficient; multiply_b = half_left_s2[band_index]; end
-        4'd5: begin multiply_a = sine_coefficient; multiply_b = half_left_s2[band_index]; end
-        4'd6: begin multiply_a = cosine_coefficient; multiply_b = half_right_s2[band_index]; end
-        4'd7: begin multiply_a = sine_coefficient; multiply_b = half_right_s2[band_index]; end
-        4'd8: begin multiply_a = temporary_left_real; multiply_b = temporary_right_imag; end
-        4'd9: begin multiply_a = temporary_left_imag; multiply_b = temporary_right_real; end
-        4'd10: begin multiply_a = temporary_left_real; multiply_b = temporary_right_real; end
-        default: begin multiply_a = temporary_left_imag; multiply_b = temporary_right_imag; end
+        4'd0: begin multiply_a = cosine_coefficient; multiply_b = full_s2[band_index]; end
+        4'd1: begin multiply_a = sine_coefficient; multiply_b = full_s2[band_index]; end
+        4'd2: begin multiply_a = cosine_coefficient; multiply_b = half_s2[band_index]; end
+        4'd3: begin multiply_a = sine_coefficient; multiply_b = half_s2[band_index]; end
+        4'd4: begin multiply_a = left_real[band_index]; multiply_b = temporary_imag; end
+        4'd5: begin multiply_a = left_imag[band_index]; multiply_b = temporary_real; end
+        4'd6: begin multiply_a = left_real[band_index]; multiply_b = temporary_real; end
+        default: begin multiply_a = left_imag[band_index]; multiply_b = temporary_imag; end
       endcase
     end
   end
@@ -440,43 +356,36 @@ module stereo_filterbank_core (
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= ST_IDLE;
-      channel_phase <= 0;
+      channel_select <= 0;
       sample_index <= 0;
       band_index <= 0;
       operation <= 0;
-      left_input <= 0;
-      right_input <= 0;
+      current_input <= 0;
       result_index <= 0;
       clipping_seen <= 0;
       saturation_seen <= 0;
       error <= 0;
-      temporary_left_real <= 0;
-      temporary_left_imag <= 0;
-      temporary_right_real <= 0;
-      temporary_right_imag <= 0;
-      temporary_half_left_real <= 0;
-      temporary_half_left_imag <= 0;
-      temporary_half_right_real <= 0;
-      temporary_half_right_imag <= 0;
+      temporary_real <= 0;
+      temporary_imag <= 0;
+      temporary_half_real <= 0;
+      temporary_half_imag <= 0;
       phase_product <= 0;
       phase_cross <= 0;
       dot_product <= 0;
       for (i = 0; i < 16; i = i + 1) begin
-        full_left_s1[i] <= 0; full_left_s2[i] <= 0;
-        full_right_s1[i] <= 0; full_right_s2[i] <= 0;
-        half_left_s1[i] <= 0; half_left_s2[i] <= 0;
-        half_right_s1[i] <= 0; half_right_s2[i] <= 0;
-        cross_accumulator[i] <= 0;
-        left_square_accumulator[i] <= 0;
-        right_square_accumulator[i] <= 0;
-        early_level[i] <= 0;
+        full_s1[i] <= 0; full_s2[i] <= 0;
+        half_s1[i] <= 0; half_s2[i] <= 0;
+        left_real[i] <= 0; left_imag[i] <= 0;
+        left_level[i] <= 0;
+        left_early_level[i] <= 0; left_late_level[i] <= 0;
+        right_early_level[i] <= 0;
       end
       for (i = 0; i < 128; i = i + 1)
         result[i] <= 0;
     end else begin
       case (state)
         ST_IDLE: begin
-          channel_phase <= 0;
+          channel_select <= 0;
           sample_index <= 0;
           band_index <= 0;
           operation <= 0;
@@ -488,14 +397,12 @@ module stereo_filterbank_core (
               clipping_seen <= 0;
               saturation_seen <= 0;
               for (i = 0; i < 16; i = i + 1) begin
-                full_left_s1[i] <= 0; full_left_s2[i] <= 0;
-                full_right_s1[i] <= 0; full_right_s2[i] <= 0;
-                half_left_s1[i] <= 0; half_left_s2[i] <= 0;
-                half_right_s1[i] <= 0; half_right_s2[i] <= 0;
-                cross_accumulator[i] <= 0;
-                left_square_accumulator[i] <= 0;
-                right_square_accumulator[i] <= 0;
-                early_level[i] <= 0;
+                full_s1[i] <= 0; full_s2[i] <= 0;
+                half_s1[i] <= 0; half_s2[i] <= 0;
+                left_real[i] <= 0; left_imag[i] <= 0;
+                left_level[i] <= 0;
+                left_early_level[i] <= 0; left_late_level[i] <= 0;
+                right_early_level[i] <= 0;
               end
             end else begin
               error <= 1;
@@ -505,62 +412,27 @@ module stereo_filterbank_core (
 
         ST_LOAD: begin
           if (enable && input_valid) begin
-            if (!channel_phase) begin
-              left_input <= $signed(input_data);
-              if ((input_data == 8'h7f) || (input_data == 8'h80))
-                clipping_seen <= 1;
-              channel_phase <= 1;
-            end else begin
-              right_input <= $signed(input_data);
-              if ((input_data == 8'h7f) || (input_data == 8'h80))
-                clipping_seen <= 1;
-              channel_phase <= 0;
-              band_index <= 0;
-              operation <= 0;
-              state <= ST_PROCESS;
-            end
+            current_input <= $signed(input_data);
+            if ((input_data == 8'h7f) || (input_data == 8'h80))
+              clipping_seen <= 1;
+            band_index <= 0;
+            operation <= 0;
+            state <= ST_PROCESS;
           end
         end
 
         ST_PROCESS: begin
           case (operation)
             4'd0: begin
-              full_left_s2[band_index] <= selected_s1;
-              full_left_s1[band_index] <= resonator_next;
+              full_s2[band_index] <= selected_s1;
+              full_s1[band_index] <= resonator_next;
               saturation_seen <= saturation_seen || resonator_saturated;
               operation <= 4'd1;
             end
-            4'd1: begin
-              full_right_s2[band_index] <= selected_s1;
-              full_right_s1[band_index] <= resonator_next;
-              saturation_seen <= saturation_seen || resonator_saturated;
-              operation <= 4'd2;
-            end
-            4'd2: begin
-              half_left_s2[band_index] <= selected_s1;
-              half_left_s1[band_index] <= resonator_next;
-              saturation_seen <= saturation_seen || resonator_saturated;
-              operation <= 4'd3;
-            end
-            4'd3: begin
-              half_right_s2[band_index] <= selected_s1;
-              half_right_s1[band_index] <= resonator_next;
-              saturation_seen <= saturation_seen || resonator_saturated;
-              operation <= 4'd4;
-            end
-            4'd4: begin
-              cross_accumulator[band_index] <=
-                  cross_accumulator[band_index] + multiply_result;
-              operation <= 4'd5;
-            end
-            4'd5: begin
-              left_square_accumulator[band_index] <=
-                  left_square_accumulator[band_index] + multiply_result;
-              operation <= 4'd6;
-            end
             default: begin
-              right_square_accumulator[band_index] <=
-                  right_square_accumulator[band_index] + multiply_result;
+              half_s2[band_index] <= selected_s1;
+              half_s1[band_index] <= resonator_next;
+              saturation_seen <= saturation_seen || resonator_saturated;
               operation <= 0;
               if (band_index == 15) begin
                 band_index <= 0;
@@ -582,26 +454,20 @@ module stereo_filterbank_core (
         ST_EARLY: begin
           case (operation)
             4'd0: begin
-              temporary_half_left_real <= half_left_s1[band_index]
+              temporary_half_real <= half_s1[band_index]
                   - ($signed(multiply_result) >>> 12);
               operation <= 4'd1;
             end
-            4'd1: begin
-              temporary_half_left_imag <= $signed(multiply_result) >>> 12;
-              operation <= 4'd2;
-            end
-            4'd2: begin
-              temporary_half_right_real <= half_right_s1[band_index]
-                  - ($signed(multiply_result) >>> 12);
-              operation <= 4'd3;
-            end
             default: begin
-              early_level[band_index] <= log_compress(
-                  (abs28(temporary_half_left_real + temporary_half_right_real)
-                   + abs28(temporary_half_left_imag
-                           + ($signed(multiply_result) >>> 12))) >> 1);
-              half_left_s1[band_index] <= 0; half_left_s2[band_index] <= 0;
-              half_right_s1[band_index] <= 0; half_right_s2[band_index] <= 0;
+              if (!channel_select)
+                left_early_level[band_index] <= log_compress(
+                    abs28(temporary_half_real)
+                    + abs28($signed(multiply_result) >>> 12));
+              else
+                right_early_level[band_index] <= log_compress(
+                    abs28(temporary_half_real)
+                    + abs28($signed(multiply_result) >>> 12));
+              half_s1[band_index] <= 0; half_s2[band_index] <= 0;
               operation <= 0;
               if (band_index == 15) begin
                 band_index <= 0;
@@ -616,31 +482,48 @@ module stereo_filterbank_core (
 
         ST_FINAL: begin
           case (operation)
-            4'd0: begin temporary_left_real <= full_left_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd1; end
-            4'd1: begin temporary_left_imag <= $signed(multiply_result) >>> 12; operation <= 4'd2; end
-            4'd2: begin temporary_right_real <= full_right_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd3; end
-            4'd3: begin temporary_right_imag <= $signed(multiply_result) >>> 12; operation <= 4'd4; end
-            4'd4: begin temporary_half_left_real <= half_left_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd5; end
-            4'd5: begin temporary_half_left_imag <= $signed(multiply_result) >>> 12; operation <= 4'd6; end
-            4'd6: begin temporary_half_right_real <= half_right_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd7; end
-            4'd7: begin temporary_half_right_imag <= $signed(multiply_result) >>> 12; operation <= 4'd8; end
-            4'd8: begin phase_product <= multiply_result; operation <= 4'd9; end
-            4'd9: begin phase_cross <= phase_product - multiply_result; operation <= 4'd10; end
-            4'd10: begin dot_product <= multiply_result; operation <= 4'd11; end
+            4'd0: begin temporary_real <= full_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd1; end
+            4'd1: begin temporary_imag <= $signed(multiply_result) >>> 12; operation <= 4'd2; end
+            4'd2: begin temporary_half_real <= half_s1[band_index] - ($signed(multiply_result) >>> 12); operation <= 4'd3; end
+            4'd3: begin
+              temporary_half_imag <= $signed(multiply_result) >>> 12;
+              operation <= channel_select ? 4'd4 : 4'd8;
+            end
+            4'd4: begin phase_product <= multiply_result; operation <= 4'd5; end
+            4'd5: begin phase_cross <= phase_product - multiply_result; operation <= 4'd6; end
+            4'd6: begin dot_product <= multiply_result; operation <= 4'd7; end
             default: begin
-              result[result_base] <= final_left_level;
-              result[result_base + 1] <= final_right_level;
-              result[result_base + 2] <= final_mono_level;
-              result[result_base + 3] <= final_delta;
-              result[result_base + 4] <= final_delta[7] ? 8'd0 : final_delta;
-              result[result_base + 5] <= final_level_difference;
-              result[result_base + 6] <= final_phase;
-              result[result_base + 7] <= final_confidence;
+              if (!channel_select) begin
+                left_real[band_index] <= temporary_real;
+                left_imag[band_index] <= temporary_imag;
+                left_level[band_index] <= log_compress(
+                    abs28(temporary_real) + abs28(temporary_imag));
+                left_late_level[band_index] <= final_late_level;
+              end else begin
+                result[result_base] <= left_level[band_index];
+                result[result_base + 1] <= final_right_level;
+                result[result_base + 2] <= final_mono_level;
+                result[result_base + 3] <= final_delta;
+                result[result_base + 4] <= final_delta[7] ? 8'd0 : final_delta;
+                result[result_base + 5] <= final_level_difference;
+                result[result_base + 6] <= final_phase;
+                result[result_base + 7] <= final_confidence;
+              end
               operation <= 0;
               if (band_index == 15) begin
                 band_index <= 0;
-                result_index <= 0;
-                state <= ST_OUTPUT;
+                if (!channel_select) begin
+                  channel_select <= 1;
+                  sample_index <= 0;
+                  for (i = 0; i < 16; i = i + 1) begin
+                    full_s1[i] <= 0; full_s2[i] <= 0;
+                    half_s1[i] <= 0; half_s2[i] <= 0;
+                  end
+                  state <= ST_LOAD;
+                end else begin
+                  result_index <= 0;
+                  state <= ST_OUTPUT;
+                end
               end else begin
                 band_index <= band_index + 1'b1;
               end

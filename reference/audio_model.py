@@ -40,8 +40,6 @@ CENTER_FREQUENCIES = (
 
 COEFFICIENT_FRACTION_BITS = 12
 STATE_BITS = 26
-CORRELATION_SHIFT = 12
-CORRELATION_SAMPLE_BITS = 12
 DELTA_GAIN = 4
 
 
@@ -152,21 +150,12 @@ def _normalize_signed(numerator: int, companion: int) -> int:
     return _saturate_s8(value)
 
 
-def _fixed_coherence(cross: int, left_square: int, right_square: int) -> int:
-    if left_square <= 0 or right_square <= 0:
-        return 0
-    # Power-of-two approximation to sqrt(left_square * right_square).
-    exponent = ((left_square.bit_length() - 1) + (right_square.bit_length() - 1)) // 2
-    denominator = 1 << exponent
-    return _saturate_u8((abs(cross) << 8) // denominator)
-
-
 def _signal_gate(left_level: int, right_level: int) -> int:
     return _saturate_u8((min(left_level, right_level) - 40) * 4)
 
 
 def process_window_fixed(left: Sequence[int], right: Sequence[int]) -> list[AudioCell]:
-    """Process one stereo window using the proposed integer ASIC arithmetic."""
+    """Process one channel-major stereo window using the integer ASIC arithmetic."""
     _validate_window(left, right)
     cells = []
     q = COEFFICIENT_FRACTION_BITS
@@ -174,88 +163,52 @@ def process_window_fixed(left: Sequence[int], right: Sequence[int]) -> list[Audi
     for coefficient, cosine, sine in zip(
         RESONATOR_COEFFICIENTS, COSINE_COEFFICIENTS, SINE_COEFFICIENTS
     ):
-        left_s1 = left_s2 = right_s1 = right_s2 = 0
-        left_half_s1 = left_half_s2 = right_half_s1 = right_half_s2 = 0
-        early_level = 0
-        cross_acc = left_square = right_square = 0
-
-        for index, (left_pcm, right_pcm) in enumerate(zip(left, right)):
-            if index == WINDOW_SIZE // 2:
-                left_half_s1 = left_half_s2 = right_half_s1 = right_half_s2 = 0
-            left_input = left_pcm
-            right_input = right_pcm
-            left_state = _saturate_signed(
-                left_input + ((coefficient * left_s1) >> q) - left_s2,
-                STATE_BITS,
-            )
-            right_state = _saturate_signed(
-                right_input + ((coefficient * right_s1) >> q) - right_s2,
-                STATE_BITS,
-            )
-            left_s2, left_s1 = left_s1, left_state
-            right_s2, right_s1 = right_s1, right_state
-            left_half_state = _saturate_signed(
-                left_input + ((coefficient * left_half_s1) >> q) - left_half_s2,
-                STATE_BITS,
-            )
-            right_half_state = _saturate_signed(
-                right_input + ((coefficient * right_half_s1) >> q) - right_half_s2,
-                STATE_BITS,
-            )
-            left_half_s2, left_half_s1 = left_half_s1, left_half_state
-            right_half_s2, right_half_s1 = right_half_s1, right_half_state
-
-            if index == WINDOW_SIZE // 2 - 1:
-                left_half_real = left_half_s1 - ((cosine * left_half_s2) >> q)
-                left_half_imag = (sine * left_half_s2) >> q
-                right_half_real = right_half_s1 - ((cosine * right_half_s2) >> q)
-                right_half_imag = (sine * right_half_s2) >> q
-                early_level = _log_compress(
-                    (
-                        abs(left_half_real + right_half_real)
-                        + abs(left_half_imag + right_half_imag)
-                    )
-                    >> 1
+        def channel_summary(samples: Sequence[int]) -> tuple[int, int, int, int]:
+            full_s1 = full_s2 = half_s1 = half_s2 = 0
+            early_level = 0
+            for index, sample in enumerate(samples):
+                if index == WINDOW_SIZE // 2:
+                    half_s1 = half_s2 = 0
+                full_state = _saturate_signed(
+                    sample + ((coefficient * full_s1) >> q) - full_s2,
+                    STATE_BITS,
                 )
+                half_state = _saturate_signed(
+                    sample + ((coefficient * half_s1) >> q) - half_s2,
+                    STATE_BITS,
+                )
+                full_s2, full_s1 = full_s1, full_state
+                half_s2, half_s1 = half_s1, half_state
+                if index == WINDOW_SIZE // 2 - 1:
+                    half_real = half_s1 - ((cosine * half_s2) >> q)
+                    half_imag = (sine * half_s2) >> q
+                    early_level = _log_compress(abs(half_real) + abs(half_imag))
+            real = full_s1 - ((cosine * full_s2) >> q)
+            imag = (sine * full_s2) >> q
+            half_real = half_s1 - ((cosine * half_s2) >> q)
+            half_imag = (sine * half_s2) >> q
+            late_level = _log_compress(abs(half_real) + abs(half_imag))
+            return real, imag, early_level, late_level
 
-            left_narrow = _saturate_signed(
-                left_state >> CORRELATION_SHIFT, CORRELATION_SAMPLE_BITS
-            )
-            right_narrow = _saturate_signed(
-                right_state >> CORRELATION_SHIFT, CORRELATION_SAMPLE_BITS
-            )
-            cross_acc += left_narrow * right_narrow
-            left_square += left_narrow * left_narrow
-            right_square += right_narrow * right_narrow
-
-        left_real = left_s1 - ((cosine * left_s2) >> q)
-        left_imag = (sine * left_s2) >> q
-        right_real = right_s1 - ((cosine * right_s2) >> q)
-        right_imag = (sine * right_s2) >> q
+        left_real, left_imag, left_early, left_late = channel_summary(left)
+        right_real, right_imag, right_early, right_late = channel_summary(right)
 
         left_level = _log_compress(abs(left_real) + abs(left_imag))
         right_level = _log_compress(abs(right_real) + abs(right_imag))
         mono_level = _log_compress(
             (abs(left_real + right_real) + abs(left_imag + right_imag)) >> 1
         )
-        left_half_real = left_half_s1 - ((cosine * left_half_s2) >> q)
-        left_half_imag = (sine * left_half_s2) >> q
-        right_half_real = right_half_s1 - ((cosine * right_half_s2) >> q)
-        right_half_imag = (sine * right_half_s2) >> q
-        late_level = _log_compress(
-            (
-                abs(left_half_real + right_half_real)
-                + abs(left_half_imag + right_half_imag)
-            )
-            >> 1
-        )
+        early_level = (left_early + right_early) >> 1
+        late_level = (left_late + right_late) >> 1
         delta = _saturate_s8((late_level - early_level) * DELTA_GAIN)
 
         # Positive means the right channel leads the left channel.
         phase_cross = left_real * right_imag - left_imag * right_real
         phase_dot = left_real * right_real + left_imag * right_imag
         phase_lead = _normalize_signed(phase_cross, phase_dot)
-        coherence = _fixed_coherence(cross_acc, left_square, right_square)
+        level_difference = _saturate_s8(right_level - left_level)
+        balance_gate = max(0, 255 - min(32, abs(level_difference)) * 8)
+        confidence = min(_signal_gate(left_level, right_level), balance_gate) >> 1
 
         cells.append(
             AudioCell(
@@ -264,9 +217,9 @@ def process_window_fixed(left: Sequence[int], right: Sequence[int]) -> list[Audi
                 mono_energy=mono_level,
                 energy_delta=delta,
                 onset_strength=max(0, delta),
-                level_difference=_saturate_s8(right_level - left_level),
+                level_difference=level_difference,
                 phase_lead=phase_lead,
-                stereo_confidence=min(coherence, _signal_gate(left_level, right_level)),
+                stereo_confidence=confidence,
             )
         )
     return cells
