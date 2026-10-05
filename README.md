@@ -292,7 +292,11 @@ The success criterion is not classification accuracy. It is whether these output
 
 ## Status
 
-This repository begins as an architecture and experimentation space. Interfaces, component choices, and packet formats are deliberately provisional. The immediate next step is to turn the minimum feature set into executable reference pipelines and use real recordings to pressure-test the representation.
+The first visual ASIC kernel has an RTL implementation and bit-accurate test
+model. The auditory path now has paired floating-point and proposed ASIC
+fixed-point reference models, with a frozen 16-band ERB filter bank and canonical
+1024-byte packing. The next implementation step is the time-multiplexed auditory
+RTL kernel, followed by combined synthesis and place-and-route.
 
 ---
 

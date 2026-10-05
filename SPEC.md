@@ -1582,10 +1582,40 @@ Silence, clipping, invalid samples, and weak stereo evidence SHALL remain
 distinguishable. A low-confidence zero phase lead SHALL not be interpreted as a
 confident centred source.
 
-The initial 16 bands SHOULD be approximately logarithmic and cover roughly 125 Hz
-through 8 kHz. Exact centre frequencies SHALL be selected together with the
-integer coefficient set. Frequencies above the highest represented band remain
-available in retained PCM but need not consume a dense channel in V0.
+The initial 16 centre frequencies SHALL be equally spaced on the ERB-number
+psychoacoustic scale from 125 Hz through 8 kHz. This gives substantially more
+resolution to speech, pitch, and low-frequency localization cues without spending
+half the channels on the top octave. Frequencies above the highest represented
+band remain available in retained PCM but need not consume a dense channel in V0.
+
+### 50.1 Frozen V0 filter constants
+
+`STEREO_FILTERBANK_V0` SHALL use the following constants. All three coefficients
+are signed Q12 values. `resonator` is `round(2 cos(2 pi f / 48000) * 4096)`;
+`cos` and `sin` reconstruct the final complex response from the last two resonator
+states. These values are protocol constants, not implementation suggestions.
+
+| Band | Centre (Hz) | Resonator | Cos | Sin |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 | 125 | 8191 | 4095 | 67 |
+| 1 | 208 | 8189 | 4094 | 112 |
+| 2 | 309 | 8185 | 4093 | 166 |
+| 3 | 435 | 8179 | 4089 | 233 |
+| 4 | 590 | 8168 | 4084 | 316 |
+| 5 | 781 | 8149 | 4075 | 418 |
+| 6 | 1,017 | 8120 | 4060 | 544 |
+| 7 | 1,308 | 8072 | 4036 | 698 |
+| 8 | 1,666 | 7998 | 3999 | 886 |
+| 9 | 2,109 | 7882 | 3941 | 1116 |
+| 10 | 2,654 | 7703 | 3851 | 1395 |
+| 11 | 3,327 | 7427 | 3714 | 1728 |
+| 12 | 4,157 | 7009 | 3504 | 2120 |
+| 13 | 5,180 | 6380 | 3190 | 2569 |
+| 14 | 6,443 | 5447 | 2724 | 3059 |
+| 15 | 8,000 | 4096 | 2048 | 3547 |
+
+The executable reference model SHALL be the source used to regenerate and verify
+this table. A change to any value requires a new `channel_schema_id`.
 
 ## 51. Processing pipeline
 
@@ -1739,8 +1769,9 @@ and error plots against a floating-point reference.
 At 48 kHz and 50 MHz, approximately 1,041 ASIC clocks elapse per new stereo sample.
 Because 50% overlap causes every sample to be processed twice, the ASIC receives an
 average of 96,000 stereo sample pairs/s, or about 521 clocks per transmitted pair.
-Sixteen bands across two ears require 32 band-state updates per pair, leaving about
-16 clocks per update for a shared sequential datapath before output overhead. I/O
+Full-window stereo state plus reusable early/late half-window state requires 64
+band-state updates per pair, leaving about 8 clocks per update for a shared
+sequential datapath before output overhead. I/O
 bandwidth is also small: overlapping 16-bit stereo windows require 384,000 input
 bytes/s, and 130 bytes per hop require 48,750 output bytes/s.
 
@@ -1785,7 +1816,7 @@ The auditory ASIC kernel is acceptable when:
 
 1. Directed and randomized fixed-point tests match the software model exactly.
 2. Backpressure at every byte boundary cannot corrupt left/right or sample order.
-3. Processing sustains 48 kHz stereo with at least 4× cycle margin.
+3. Processing sustains 48 kHz stereo with at least 2× cycle margin.
 4. Combined visual/audio synthesis fits the 6 × 4 allocation with routing margin.
 5. Combined place-and-route meets the 50 MHz target at required corners.
 6. Gate-level replay matches RTL and the reference model.

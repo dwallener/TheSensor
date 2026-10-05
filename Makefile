@@ -1,7 +1,12 @@
-.PHONY: test lint synth clean
+.PHONY: test test-rtl test-audio lint synth clean
 
-test:
+test: test-rtl test-audio
+
+test-rtl:
 	$(MAKE) -C test
+
+test-audio:
+	python3 -m pytest -q test/test_audio_model.py
 
 lint:
 	verilator --lint-only --Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL \
