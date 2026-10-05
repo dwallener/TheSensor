@@ -48,7 +48,8 @@ one source pixel per sensor pixel; `--fit letterbox` retains the complete field 
 view. The resulting 256 × 256 frame becomes a 16 × 16 raster of fine A0 tiles,
 which directly forms the primary 16 × 16 × 16 `VisualFrame4096`. A 2 × 2 pooling
 step also retains the earlier 8 × 8 × 16 `VisualFrame1024` for compatibility and
-feeds A1 reflex integration. Audio is converted to 48 kHz signed stereo PCM.
+feeds A1 reflex integration. Audio is converted to 24 kHz signed stereo PCM for
+the current ASIC profile.
 Source name, exact interval, fit policy, and probe metadata are embedded in every
 replay. V0 accepts at most 30 visual frames/s; the adapter rejects higher rates.
 

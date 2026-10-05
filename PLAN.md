@@ -108,6 +108,23 @@ replay, allowing the same dashboard to compare expected and implemented behavior
 The concrete display and replay contract is documented in
 [`sim/VIEWER_SPEC.md`](sim/VIEWER_SPEC.md).
 
+## Physical-fit checkpoint
+
+The first four-core 6 × 4 build reached global placement but failed detailed
+placement. Synthesis produced 48,700 standard cells and 8,583 flip-flops; the
+mapped design occupied 90.8% of the core before repair. B0 accounts for roughly
+6,865 flip-flops, so the limiting resource is persistent auditory state rather
+than the visual frame representation assembled by the host.
+
+The first conservative experiment keeps the sixteen-band response format but
+decimates the B0 input from 48 kHz to 24 kHz and changes its work unit from 256 to
+128 samples, retaining a 5.33 ms window and 50% overlap. This improves cycle
+margin and halves ingress bandwidth. It is not expected to materially reduce
+placement area because resonator state is per band, not per sample. If physical
+closure still fails, the next low-disruption area experiment is eight physical
+frequency bands; deeper state sharing remains deferred until those measurements
+are available.
+
 ## Stage 3 — Common reflex record
 
 Define a shared 16- or 32-byte reflex schema for visual, auditory, and later

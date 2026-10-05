@@ -1533,12 +1533,15 @@ several transforms at one retinal location; an auditory hypercolumn describes
 several transforms at one time-frequency location. The frequency axis is ordered
 low to high and the time axis is ordered oldest to newest.
 
-At the default 48 kHz sample rate and 128-sample hop, consecutive time slots are
+At the ASIC profile's 24 kHz sample rate and 64-sample hop, consecutive time slots are
 2.667 ms apart. One `AudioFrame1024` therefore advances every eight hops, or
-21.333 ms, and contains features whose 256-sample analysis windows overlap by 50%.
+21.333 ms, and contains features whose 128-sample analysis windows overlap by 50%.
 The frame rate is 46.875 frames/s and the dense activation bandwidth is 48,000
 bytes/s before headers. That rate is small enough to emit every frame rather than
 making sparsity a correctness requirement.
+
+The microphone acquisition side MAY remain at 48 kHz and decimate by two before
+issuing B0, preserving a conventional ADC interface and raw-audio archive.
 
 ```text
 AudioFrame1024 {
@@ -1714,7 +1717,7 @@ One independent auditory work unit is:
 
 ```text
 0xB0
-256 repetitions of {
+128 repetitions of {
     left_sample_lsb,
     left_sample_msb,
     right_sample_lsb,
@@ -1722,8 +1725,8 @@ One independent auditory work unit is:
 }
 ```
 
-Samples are signed two's-complement little-endian. The 256-sample window is 5.333 ms
-at 48 kHz. Consecutive work units begin 128 samples apart; the external scheduler
+Samples are signed two's-complement little-endian. The 128-sample window is 5.333 ms
+at 24 kHz. Consecutive work units begin 64 samples apart; the external scheduler
 resends the overlapping half-window. This small bandwidth cost makes each work unit
 self-contained and exactly replayable without requiring the ASIC to retain raw PCM
 between commands. Resonator state SHALL reset at the beginning of every `0xB0`
@@ -1793,13 +1796,13 @@ lead MAY use a narrowed cross-product or state-space determinant with confidence
 reported separately. Every approximation SHALL have a bit-accurate software model
 and error plots against a floating-point reference.
 
-At 48 kHz and 50 MHz, approximately 1,041 ASIC clocks elapse per new stereo sample.
+At 24 kHz and 50 MHz, approximately 2,083 ASIC clocks elapse per new stereo sample.
 Because 50% overlap causes every sample to be processed twice, the ASIC receives an
-average of 96,000 stereo sample pairs/s, or about 521 clocks per transmitted pair.
+average of 48,000 stereo sample pairs/s, or about 1,041 clocks per transmitted pair.
 Full-window stereo state plus reusable early/late half-window state requires 64
-band-state updates per pair, leaving about 8 clocks per update for a shared
+band-state updates per pair, leaving about 16 clocks per update for a shared
 sequential datapath before output overhead. I/O
-bandwidth is also small: overlapping 16-bit stereo windows require 384,000 input
+bandwidth is also small: overlapping 16-bit stereo windows require 192,000 input
 bytes/s, and 130 bytes per hop require 48,750 output bytes/s.
 
 ## 53. Auditory token adapter
@@ -1843,7 +1846,7 @@ The auditory ASIC kernel is acceptable when:
 
 1. Directed and randomized fixed-point tests match the software model exactly.
 2. Backpressure at every byte boundary cannot corrupt left/right or sample order.
-3. Processing sustains 48 kHz stereo with at least 2× cycle margin.
+3. Processing sustains the 24 kHz ASIC stream with at least 2× cycle margin.
 4. Combined visual/audio synthesis fits the 6 × 4 allocation with routing margin.
 5. Combined place-and-route meets the 50 MHz target at required corners.
 6. Gate-level replay matches RTL and the reference model.

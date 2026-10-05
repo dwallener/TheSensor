@@ -1,7 +1,7 @@
 /*
  * STEREO_FILTERBANK_V0
  *
- * Input: 0xB0, then 256 little-endian signed PCM16 stereo sample pairs.
+ * Input: 0xB0, then 128 little-endian signed PCM16 stereo sample pairs at 24 kHz.
  * Output: 0x5B, sixteen eight-byte band records, and one status byte.
  */
 
@@ -142,22 +142,22 @@ module stereo_filterbank_core (
     input [3:0] index;
     begin
       case (index)
-        4'd0: resonator_for_band = 14'sd8191;
-        4'd1: resonator_for_band = 14'sd8189;
-        4'd2: resonator_for_band = 14'sd8185;
-        4'd3: resonator_for_band = 14'sd8179;
-        4'd4: resonator_for_band = 14'sd8168;
-        4'd5: resonator_for_band = 14'sd8149;
-        4'd6: resonator_for_band = 14'sd8120;
-        4'd7: resonator_for_band = 14'sd8072;
-        4'd8: resonator_for_band = 14'sd7998;
-        4'd9: resonator_for_band = 14'sd7882;
-        4'd10: resonator_for_band = 14'sd7703;
-        4'd11: resonator_for_band = 14'sd7427;
-        4'd12: resonator_for_band = 14'sd7009;
-        4'd13: resonator_for_band = 14'sd6380;
-        4'd14: resonator_for_band = 14'sd5447;
-        default: resonator_for_band = 14'sd4096;
+        4'd0: resonator_for_band = 14'sd8188;
+        4'd1: resonator_for_band = 14'sd8180;
+        4'd2: resonator_for_band = 14'sd8165;
+        4'd3: resonator_for_band = 14'sd8139;
+        4'd4: resonator_for_band = 14'sd8094;
+        4'd5: resonator_for_band = 14'sd8021;
+        4'd6: resonator_for_band = 14'sd7903;
+        4'd7: resonator_for_band = 14'sd7716;
+        4'd8: resonator_for_band = 14'sd7425;
+        4'd9: resonator_for_band = 14'sd6975;
+        4'd10: resonator_for_band = 14'sd6293;
+        4'd11: resonator_for_band = 14'sd5276;
+        4'd12: resonator_for_band = 14'sd3801;
+        4'd13: resonator_for_band = 14'sd1745;
+        4'd14: resonator_for_band = -14'sd948;
+        default: resonator_for_band = -14'sd4096;
       endcase
     end
   endfunction
@@ -166,22 +166,22 @@ module stereo_filterbank_core (
     input [3:0] index;
     begin
       case (index)
-        4'd0: cosine_for_band = 13'sd4095;
-        4'd1: cosine_for_band = 13'sd4094;
-        4'd2: cosine_for_band = 13'sd4093;
-        4'd3: cosine_for_band = 13'sd4089;
-        4'd4: cosine_for_band = 13'sd4084;
-        4'd5: cosine_for_band = 13'sd4075;
-        4'd6: cosine_for_band = 13'sd4060;
-        4'd7: cosine_for_band = 13'sd4036;
-        4'd8: cosine_for_band = 13'sd3999;
-        4'd9: cosine_for_band = 13'sd3941;
-        4'd10: cosine_for_band = 13'sd3851;
-        4'd11: cosine_for_band = 13'sd3714;
-        4'd12: cosine_for_band = 13'sd3504;
-        4'd13: cosine_for_band = 13'sd3190;
-        4'd14: cosine_for_band = 13'sd2724;
-        default: cosine_for_band = 13'sd2048;
+        4'd0: cosine_for_band = 13'sd4094;
+        4'd1: cosine_for_band = 13'sd4090;
+        4'd2: cosine_for_band = 13'sd4083;
+        4'd3: cosine_for_band = 13'sd4069;
+        4'd4: cosine_for_band = 13'sd4047;
+        4'd5: cosine_for_band = 13'sd4011;
+        4'd6: cosine_for_band = 13'sd3952;
+        4'd7: cosine_for_band = 13'sd3858;
+        4'd8: cosine_for_band = 13'sd3713;
+        4'd9: cosine_for_band = 13'sd3487;
+        4'd10: cosine_for_band = 13'sd3146;
+        4'd11: cosine_for_band = 13'sd2638;
+        4'd12: cosine_for_band = 13'sd1901;
+        4'd13: cosine_for_band = 13'sd873;
+        4'd14: cosine_for_band = -13'sd474;
+        default: cosine_for_band = -13'sd2048;
       endcase
     end
   endfunction
@@ -190,21 +190,21 @@ module stereo_filterbank_core (
     input [3:0] index;
     begin
       case (index)
-        4'd0: sine_for_band = 13'sd67;
-        4'd1: sine_for_band = 13'sd112;
-        4'd2: sine_for_band = 13'sd166;
-        4'd3: sine_for_band = 13'sd233;
-        4'd4: sine_for_band = 13'sd316;
-        4'd5: sine_for_band = 13'sd418;
-        4'd6: sine_for_band = 13'sd544;
-        4'd7: sine_for_band = 13'sd698;
-        4'd8: sine_for_band = 13'sd886;
-        4'd9: sine_for_band = 13'sd1116;
-        4'd10: sine_for_band = 13'sd1395;
-        4'd11: sine_for_band = 13'sd1728;
-        4'd12: sine_for_band = 13'sd2120;
-        4'd13: sine_for_band = 13'sd2569;
-        4'd14: sine_for_band = 13'sd3059;
+        4'd0: sine_for_band = 13'sd134;
+        4'd1: sine_for_band = 13'sd223;
+        4'd2: sine_for_band = 13'sd331;
+        4'd3: sine_for_band = 13'sd465;
+        4'd4: sine_for_band = 13'sd630;
+        4'd5: sine_for_band = 13'sd832;
+        4'd6: sine_for_band = 13'sd1078;
+        4'd7: sine_for_band = 13'sd1375;
+        4'd8: sine_for_band = 13'sd1730;
+        4'd9: sine_for_band = 13'sd2148;
+        4'd10: sine_for_band = 13'sd2622;
+        4'd11: sine_for_band = 13'sd3133;
+        4'd12: sine_for_band = 13'sd3628;
+        4'd13: sine_for_band = 13'sd4002;
+        4'd14: sine_for_band = 13'sd4068;
         default: sine_for_band = 13'sd3547;
       endcase
     end
@@ -575,9 +575,9 @@ module stereo_filterbank_core (
               operation <= 0;
               if (band_index == 15) begin
                 band_index <= 0;
-                if (sample_index == 8'd127)
+                if (sample_index == 8'd63)
                   state <= ST_EARLY;
-                else if (sample_index == 8'd255)
+                else if (sample_index == 8'd127)
                   state <= ST_FINAL;
                 else begin
                   sample_index <= sample_index + 1'b1;
@@ -616,7 +616,7 @@ module stereo_filterbank_core (
               operation <= 0;
               if (band_index == 15) begin
                 band_index <= 0;
-                sample_index <= 8'd128;
+                sample_index <= 8'd64;
                 state <= ST_LOAD;
               end else begin
                 band_index <= band_index + 1'b1;

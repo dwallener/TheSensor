@@ -102,6 +102,7 @@ Run `make test` from the repository root for bit-accurate cocotb tests.
 A controller or FPGA must buffer image-sensor frames, divide them into 16x16 tiles,
 and stream current/previous tile pairs to the ASIC. It can feed the returned tile
 records to `A1` for field-level evidence. It must likewise acquire and
-synchronize the microphone ADC streams, construct overlapping 256-sample windows,
+synchronize the microphone ADC streams, decimate the 48 kHz acquisition stream to
+24 kHz, construct overlapping 128-sample windows,
 and assemble eight returned slots for `B1`. Sensor acquisition and raw buffering
 are intentionally outside this TinyTapeout block.

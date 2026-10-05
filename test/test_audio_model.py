@@ -34,26 +34,26 @@ def test_erb_centres_and_coefficients_are_frozen():
         1666, 2109, 2654, 3327, 4157, 5180, 6443, 8000,
     )
     assert RESONATOR_COEFFICIENTS == (
-        8191, 8189, 8185, 8179, 8168, 8149, 8120, 8072,
-        7998, 7882, 7703, 7427, 7009, 6380, 5447, 4096,
+        8188, 8180, 8165, 8139, 8094, 8021, 7903, 7716,
+        7425, 6975, 6293, 5276, 3801, 1745, -948, -4096,
     )
     assert coefficient_table() == (
-        (125, 8191, 4095, 67),
-        (208, 8189, 4094, 112),
-        (309, 8185, 4093, 166),
-        (435, 8179, 4089, 233),
-        (590, 8168, 4084, 316),
-        (781, 8149, 4075, 418),
-        (1017, 8120, 4060, 544),
-        (1308, 8072, 4036, 698),
-        (1666, 7998, 3999, 886),
-        (2109, 7882, 3941, 1116),
-        (2654, 7703, 3851, 1395),
-        (3327, 7427, 3714, 1728),
-        (4157, 7009, 3504, 2120),
-        (5180, 6380, 3190, 2569),
-        (6443, 5447, 2724, 3059),
-        (8000, 4096, 2048, 3547),
+        (125, 8188, 4094, 134),
+        (208, 8180, 4090, 223),
+        (309, 8165, 4083, 331),
+        (435, 8139, 4069, 465),
+        (590, 8094, 4047, 630),
+        (781, 8021, 4011, 832),
+        (1017, 7903, 3952, 1078),
+        (1308, 7716, 3858, 1375),
+        (1666, 7425, 3713, 1730),
+        (2109, 6975, 3487, 2148),
+        (2654, 6293, 3146, 2622),
+        (3327, 5276, 2638, 3133),
+        (4157, 3801, 1901, 3628),
+        (5180, 1745, 873, 4002),
+        (6443, -948, -474, 4068),
+        (8000, -4096, -2048, 3547),
     )
 
 
@@ -101,8 +101,9 @@ def test_right_lead_has_positive_phase_evidence():
 def test_onset_and_offset_have_opposite_delta():
     frequency = CENTER_FREQUENCIES[9]
     wave = tone(frequency)
-    onset = [sample // 8 for sample in wave[:128]] + wave[128:]
-    offset = wave[:128] + [sample // 8 for sample in wave[128:]]
+    half = WINDOW_SIZE // 2
+    onset = [sample // 8 for sample in wave[:half]] + wave[half:]
+    offset = wave[:half] + [sample // 8 for sample in wave[half:]]
     assert process_window_fixed(onset, onset)[9].energy_delta > 0
     assert process_window_fixed(onset, onset)[9].onset_strength > 0
     assert process_window_fixed(offset, offset)[9].energy_delta < 0

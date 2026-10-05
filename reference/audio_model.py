@@ -1,6 +1,6 @@
 """Floating-point and bit-accurate fixed-point auditory reference models.
 
-The model implements one STEREO_FILTERBANK_V0 work unit: a 256-sample signed
+The model implements one STEREO_FILTERBANK_V0 work unit: a 128-sample signed
 stereo window becomes sixteen eight-byte auditory cells. Eight consecutive slots
 can be packed into the 1024-byte dense auditory-frame payload specified in
 SPEC.md.
@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from math import cos, log10, pi, sin, sqrt
 from typing import Sequence
 
-SAMPLE_RATE = 48_000
-WINDOW_SIZE = 256
-HOP_SIZE = 128
+SAMPLE_RATE = 24_000
+WINDOW_SIZE = 128
+HOP_SIZE = 64
 BAND_COUNT = 16
 CHANNEL_COUNT = 8
 
