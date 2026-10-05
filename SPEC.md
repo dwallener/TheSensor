@@ -91,24 +91,24 @@ The minimum useful operating point is:
 | Parameter | Minimum target | Preferred first target |
 | --- | ---: | ---: |
 | Active resolution | 320 × 240 | 640 × 480 |
-| Frame rate | 30 fps | 60 fps |
+| Frame rate | 30 fps | 30 fps |
 | Cameras | 2 | 2 |
 | Sample depth | 8 bits | 8 bits |
 | Sensor output | Raw monochrome | Raw monochrome |
 
-The architecture SHOULD scale to 1280 × 800 at 60 fps per camera without changing the logical processing interfaces. Full 1080p is permitted but is not a first-revision requirement.
+The architecture SHOULD scale to 1280 × 800 at 30 fps per camera without changing the logical processing interfaces. Full 1080p is permitted but is not a first-revision requirement.
 
 Representative active-pixel bandwidths are:
 
 | Mode | Per camera | Stereo pair |
 | --- | ---: | ---: |
-| 640 × 480 × 60 fps × 8 bit | 18.4 MB/s | 36.9 MB/s |
-| 1280 × 800 × 60 fps × 8 bit | 61.4 MB/s | 122.9 MB/s |
+| 640 × 480 × 30 fps × 8 bit | 9.2 MB/s | 18.4 MB/s |
+| 1280 × 800 × 30 fps × 8 bit | 30.7 MB/s | 61.4 MB/s |
 | 1920 × 1080 × 30 fps × 8 bit | 62.2 MB/s | 124.4 MB/s |
 
 These figures exclude horizontal and vertical blanking, packet overhead, metadata, and memory readback. Internal buses and memories SHALL be budgeted using the sensor's complete timing, not only active pixels.
 
-Buffered streaming transfers every active pixel at least twice: once from capture into memory and once from memory into processing. Ignoring overhead, the external-memory traffic is therefore at least 73.7 MB/s for stereo VGA/60, 245.8 MB/s for stereo 1280 × 800/60, and 248.8 MB/s for stereo 1080p/30. Trigger retention, stereo algorithms, display, and host export add further reads or writes. The memory controller SHALL be sized from the sum of concurrent traffic with explicit margin.
+Buffered streaming transfers every active pixel at least twice: once from capture into memory and once from memory into processing. Ignoring overhead, the external-memory traffic is therefore at least 36.9 MB/s for stereo VGA/30, 122.9 MB/s for stereo 1280 × 800/30, and 248.8 MB/s for stereo 1080p/30. Trigger retention, stereo algorithms, display, and host export add further reads or writes. The memory controller SHALL be sized from the sum of concurrent traffic with explicit margin.
 
 ## 6. Sensor interface
 
@@ -406,7 +406,7 @@ The first visual vertical slice is complete when it can demonstrate all of the f
 
 ## 17. Current recommendation
 
-Build V0 around synchronized **OV9281 global-shutter cameras**, atomic stereo-pair buffers, and an **8-bit buffered pixel-stream contract** independent of the camera connector. Begin at VGA resolution and 30–60 fps. Use at least two stereo-pair buffers so acquisition and processing can run concurrently without sharing ownership.
+Build V0 around synchronized **OV9281 global-shutter cameras**, atomic stereo-pair buffers, and an **8-bit buffered pixel-stream contract** independent of the camera connector. Begin at VGA resolution and a fixed maximum of 30 fps. Use at least two stereo-pair buffers so acquisition and processing can run concurrently without sharing ownership.
 
 This adds a deliberate frame of latency. It also gives the first physical implementation deterministic stereo, uncomplicated replay, clean clock-domain separation, and a processing pipeline that can run faster or slower than sensor readout. A direct sensor-to-reflex path remains a possible V1 optimization after the representation and algorithms are proven.
 
@@ -812,13 +812,13 @@ remains the reference evidence used to evaluate them.
 
 ## 33. Representation decision
 
-The canonical per-frame output SHALL be a **fixed 8 × 8 spatial grid with 16 feature channels per grid cell**:
+The canonical per-frame output SHALL be a **fixed 16 × 16 spatial grid with 16 feature channels per grid cell**:
 
 ```text
-8 × 8 × 16 = 1024 activation values per visual frame
+16 × 16 × 16 = 4096 activation values per visual frame
 ```
 
-The grid is retinotopic: every `(x, y)` cell always refers to the same calibrated region of the field of view. The channel axis contains outputs from several processing stages, including local appearance, oriented energy, temporal change, motion, stereo, grouping, looming, and salience. Flattening the tensor produces a stable 1024-dimensional vector; reshaping it restores the visual field.
+The grid is retinotopic: every `(x, y)` cell always refers to the same calibrated region of the field of view. The channel axis contains outputs from several processing stages, including local appearance, oriented energy, temporal change, motion, stereo, grouping, looming, and salience. Flattening the tensor produces a stable 4096-dimensional vector; reshaping it restores the visual field.
 
 ```text
 buffered stereo frames
@@ -832,16 +832,21 @@ buffered stereo frames
                                 spatial/temporal pooling
                                            │
                                            v
-                                  8 × 8 × 16 tensor
+                                 16 × 16 × 16 tensor
                                      │         │
                                      │         └─> optional sparse events
                                      v
-                         flatten to 1024-d model input
+                         flatten to 4096-d model input
 ```
 
 This answers the central representation question:
 
-> The output is a fixed grid of visual “hypercolumns.” Each grid cell contains the same 16 measurements, and each channel viewed across the grid forms an 8 × 8 activity map.
+> The output is a fixed grid of visual “hypercolumns.” Each grid cell contains the same 16 measurements, and each channel viewed across the grid forms a 16 × 16 activity map.
+
+V0 SHALL process no more than 30 committed visual frames per second. A faster
+source SHALL be decimated or rate-converted before it enters this pipeline. The
+cap is part of the V0 representation and transport budget, not merely a simulator
+default.
 
 The representation SHALL preserve:
 
@@ -959,7 +964,7 @@ Photometric correction SHOULD remain minimal. Hidden automatic contrast, sharpen
 
 ### 36.2 Stage 1 — tile and patch scheduling
 
-The image SHALL be divided into small processing tiles independently of the final 8 × 8 output grid. V0 begins with a 16 × 16 active-pixel processing tile unless transport modelling selects another size.
+The image SHALL be divided into small processing tiles independently of the final 16 × 16 output grid. V0 begins with a 16 × 16 active-pixel processing tile unless transport modelling selects another size.
 
 Each work unit SHALL include the active tile plus whatever halo is required by the selected local kernels. A 3 × 3 spatial kernel therefore receives an 18 × 18 patch for a 16 × 16 active tile when halo pixels are sent explicitly.
 
@@ -971,7 +976,7 @@ A work unit MAY contain:
 - validity mask;
 - frame, tile, timing, and configuration metadata.
 
-The scheduler SHALL use a declared patch order and SHALL NOT make the ASIC infer frame position from uninterrupted timing. Fine tile outputs SHALL be accumulated or pooled into the corresponding final 8 × 8 grid cell.
+The scheduler SHALL use a declared patch order and SHALL NOT make the ASIC infer frame position from uninterrupted timing. Fine tile outputs SHALL be accumulated or pooled into the corresponding final 16 × 16 grid cell.
 
 ### 36.3 Stage 2 — local normalization
 
@@ -996,7 +1001,7 @@ The V1-like spatial stage SHOULD compute responses for at least four orientation
 
 The first implementation MAY use small integer gradient or Gabor-like kernels rather than literal floating-point Gabors. Opposite-polarity responses SHOULD be combined into local orientation energy when phase invariance is useful.
 
-The four orientation-energy channels SHALL remain available for pooling into `VisualFrame1024`. A consumer that wants a compact continuous orientation estimate MAY derive a doubled-angle vector:
+The four orientation-energy channels SHALL remain available for pooling into `VisualFrame4096`. A consumer that wants a compact continuous orientation estimate MAY derive a doubled-angle vector:
 
 ```text
 edge_c2 = edge_energy × cos(2 × orientation)
@@ -1063,14 +1068,14 @@ V2/V4-like behavior begins as pooling, not object naming. Later system stages MA
 
 These stages SHALL consume and emit the same documented field/token semantics. They MAY initially run off-chip. Biological labels such as V1, V2, MT, or V4 are architectural analogies, not claims of biological equivalence.
 
-## 37. Canonical dense representation: `VisualFrame1024`
+## 37. Canonical dense representation: `VisualFrame4096`
 
 The canonical model-facing representation is:
 
 ```text
-VisualFrame1024 {
+VisualFrame4096 {
     VisualFrameHeader header;
-    VisualCell cells[8][8];
+    VisualCell cells[16][16];
 }
 
 VisualCell {
@@ -1093,7 +1098,7 @@ VisualCell {
 }
 ```
 
-Each `VisualCell` is 16 bytes. Sixty-four cells therefore produce exactly 1,024 activation bytes per frame.
+Each `VisualCell` is 16 bytes. Two hundred fifty-six cells therefore produce exactly 4,096 activation bytes per frame.
 
 The stable channel registry is:
 
@@ -1123,19 +1128,19 @@ These are functional analogies, not claims that a particular biological area con
 The normative flattened index is cell-major:
 
 ```text
-index = ((y * 8) + x) * 16 + channel
+index = ((y * 16) + x) * 16 + channel
 ```
 
-where `x` and `y` are in `0..7`, `(0, 0)` is the top-left of the calibrated visual field, and `channel` is in `0..15`.
+where `x` and `y` are in `0..15`, `(0, 0)` is the top-left of the calibrated visual field, and `channel` is in `0..15`.
 
-Cell-major ordering matches the tile-processing hardware: after a spatial bin is complete, its 16 output values can be emitted consecutively. A model or visualization MAY transpose the same data into channel-major `[16][8][8]` form. In channel-major form, each channel is an 8 × 8 activity bitmap.
+Cell-major ordering matches the tile-processing hardware: after a spatial bin is complete, its 16 output values can be emitted consecutively. A model or visualization MAY transpose the same data into channel-major `[16][16][16]` form. In channel-major form, each channel is a 16 × 16 activity bitmap.
 
 ### 37.2 Validity and confidence
 
-The 1,024 activation values are accompanied by metadata rather than overloaded sentinel values wherever possible:
+The 4,096 activation values are accompanied by metadata rather than overloaded sentinel values wherever possible:
 
 - a 16-bit implemented-channel mask;
-- a 64-bit valid-cell mask;
+- a 256-bit valid-cell mask;
 - saturation and overflow flags;
 - frame-level sensor-health state;
 - explicit motion and depth confidence channels;
@@ -1147,7 +1152,7 @@ Signed channels use two's-complement `int8`. Unsigned energy channels use `uint8
 
 ### 37.3 Spatial pooling
 
-The 8 × 8 grid is independent of sensor resolution. At VGA, each final cell covers a nominal 80 × 60 pixel region; at 1280 × 800, each covers 160 × 100 pixels. Fine local filters run before this pooling, so a final grid cell aggregates many smaller receptive fields rather than applying one enormous Gabor kernel to its entire region.
+The 16 × 16 grid is independent of sensor resolution. At VGA, each final cell covers a nominal 40 × 30 pixel region; at 1280 × 800, each covers 80 × 50 pixels. Fine local filters run before this pooling, so a final grid cell may aggregate smaller receptive fields rather than applying one enormous Gabor kernel to its entire region. At the V0 simulator's 256 × 256 input size, one 16 × 16 A0 tile maps directly to one canonical cell.
 
 Pooling MAY use mean, maximum, energy sum, opponent sum, or confidence-weighted reduction according to the channel. The reduction rule for every channel SHALL be versioned and bit-accurate.
 
@@ -1155,7 +1160,16 @@ The fixed grid makes recordings comparable across camera resolution changes. Geo
 
 ### 37.4 Bandwidth
 
-One `VisualFrame1024` activation payload is exactly 1,024 bytes. At 30 frames/s this is 30,720 bytes/s; at 60 frames/s it is 61,440 bytes/s, before headers and optional masks. V0 SHALL emit the full vector for every processed frame because this bandwidth is negligible relative to the raw sensor streams.
+One `VisualFrame4096` activation payload is exactly 4,096 bytes. At the V0 maximum of 30 frames/s this is 122,880 bytes/s before headers and optional masks. V0 SHALL emit the full vector for every processed frame because this bandwidth is negligible relative to the raw sensor streams.
+
+### 37.5 Compatibility and reflex lattice
+
+V0 SHALL also retain a 2 × 2 pooled 8 × 8 × 16 `VisualFrame1024`
+representation. It exists for backtracking, compatibility experiments, and the
+current A1 reflex kernel. It is not the default model-facing vector.
+Implementations SHALL derive it deterministically from the corresponding
+`VisualFrame4096` and SHALL identify the lattice dimensions in frame metadata so
+the two representations cannot be confused.
 
 ## 38. Optional sparse representation: `VisualToken`
 
@@ -1243,7 +1257,7 @@ Sparse events alone are insufficient. No events may mean that the world is stabl
 
 The normal output stream SHALL therefore contain:
 
-1. one complete `VisualFrame1024` for every processed frame;
+1. one complete `VisualFrame4096` for every processed frame;
 2. optional sparse `VisualToken` records derived from those frames;
 3. explicit health and heartbeat records;
 4. triggered raw stereo windows around selected events.
@@ -1251,13 +1265,14 @@ The normal output stream SHALL therefore contain:
 Initial policy:
 
 - visual processing runs on every committed stereo pair;
-- a complete 1,024-byte activation vector is emitted for every processed frame;
+- a complete 4,096-byte activation vector is emitted for every processed frame;
+- visual frame cadence SHALL NOT exceed 30 fps;
 - token candidates MAY be evaluated every frame;
 - health is emitted at least once per second and immediately on change;
 - the default sparse-token budget is 32 tokens per visual frame;
 - exceeding the token budget SHALL set overflow and candidate-count metadata.
 
-Tokens SHOULD be emitted on threshold crossing, substantial change, or local non-maximum selection—not continuously merely because a feature remains present. A persistent edge belongs in the 1024-vector; the appearance, movement, or disappearance of that edge may also produce an event.
+Tokens SHOULD be emitted on threshold crossing, substantial change, or local non-maximum selection—not continuously merely because a feature remains present. A persistent edge belongs in the 4096-vector; the appearance, movement, or disappearance of that edge may also produce an event.
 
 ## 41. Candidate selection and token arbitration
 
@@ -1280,13 +1295,13 @@ The representation is intended to support two complementary adapters.
 
 ### 42.1 Frame-vector adapter
 
-`VisualFrame1024` is simultaneously:
+`VisualFrame4096` is simultaneously:
 
-- a 1024-dimensional vector for a linear projection or MLP;
-- an `[8][8][16]` grid for cell-oriented processing;
-- a `[16][8][8]` tensor for CNN or feature-plane processing;
-- 64 spatial tokens, each containing a 16-dimensional visual hypercolumn;
-- 16 feature tokens, each containing an 8 × 8 activation bitmap.
+- a 4096-dimensional vector for a linear projection or MLP;
+- a `[16][16][16]` grid for cell-oriented processing;
+- a `[16][16][16]` channel-first tensor for CNN or feature-plane processing;
+- 256 spatial tokens, each containing a 16-dimensional visual hypercolumn;
+- 16 feature tokens, each containing a 16 × 16 activation bitmap.
 
 A model adapter MAY choose any of these views without changing the recorded representation. The channel meanings remain physically interpretable and stable across training runs.
 
@@ -1333,7 +1348,7 @@ This is exactly 512 pixel bytes plus one command byte. At VGA, there are 40 × 3
 1,200 non-overlapping 16 × 16 processing tiles. At 30 frames/s, current/previous
 transport occupies 18.43 MB/s before responses and handshake stalls. Including the
 current 12-byte response and one finalization clock, the frozen schedule uses about
-37.9% of a 50 MHz byte-clock budget at 30 fps and about 75.7% at 60 fps.
+37.9% of a 50 MHz byte-clock budget at the 30 fps V0 maximum.
 
 ### 43.2 Required kernel outputs
 
@@ -1392,8 +1407,8 @@ confidence. Signed outputs use two's-complement.
 
 With no stalls, one work unit takes 526 clocks including command, pixel pairs, one
 finalization clock, and the 12-byte response. At 50 MHz, 1,200 VGA tiles take
-approximately 12.6 ms, providing margin at 30 fps and a narrow but usable path to
-60 fps. The separate input and output byte buses are logically full duplex, but V0
+approximately 12.6 ms, providing margin at the 30 fps V0 maximum. The separate
+input and output byte buses are logically full duplex, but V0
 deliberately accepts a new command only after its response has been consumed.
 
 ## 44. Bandwidth examples
@@ -1402,11 +1417,10 @@ deliberately accepts a new command only after its response has been consumed.
 
 The canonical activation payload is independent of camera resolution:
 
-- 8 × 8 spatial cells;
+- 16 × 16 spatial cells;
 - 16 one-byte feature values per cell;
-- 1,024 bytes per frame;
-- 30,720 bytes/s at 30 frames/s;
-- 61,440 bytes/s at 60 frames/s;
+- 4,096 bytes per frame;
+- 122,880 bytes/s at the 30 frames/s V0 maximum;
 - optional 32 tokens/frame add 7,680 bytes/s at 30 fps;
 - headers, masks, and health add comparatively little.
 
@@ -1466,7 +1480,7 @@ The software reference representation is acceptable when:
 6. Rectified stereo targets produce monotonic disparity with distance and invalid results under deliberate occlusion.
 7. Full frame vectors plus health metadata distinguish stable input, covered cameras, and disconnected cameras.
 8. Token budgets are deterministic and overflow is explicitly reported.
-9. Recorded replay reproduces bit-identical 1024-vectors and token candidates.
+9. Recorded replay reproduces bit-identical 4096-vectors, compatibility 1024-vectors, and token candidates.
 10. Visual timestamps align with auditory events on the common device clock.
 
 The first ASIC kernel is acceptable when:
@@ -1493,9 +1507,9 @@ The first ASIC kernel is acceptable when:
 
 ## 48. Current visual-pipeline recommendation
 
-Treat **`VisualFrame1024`—an 8 × 8 grid of 16-channel visual hypercolumns—as the ground-truth frame representation**. Flatten it when a model wants a 1024-dimensional vector; reshape it when a model or human wants feature planes. `VisualToken` records are optional attention-oriented derivatives, not the primary representation.
+Treat **`VisualFrame4096`—a 16 × 16 grid of 16-channel visual hypercolumns—as the ground-truth frame representation**. Flatten it when a model wants a 4096-dimensional vector; reshape it when a model or human wants feature planes. Retain the pooled `VisualFrame1024` for compatibility and reflex processing. `VisualToken` records are optional attention-oriented derivatives, not the primary representation.
 
-Emit the full 1,024-byte vector for every processed frame. Retain raw sensor windows around salient events. Use the first TinyTapeout synthesis profile only for monocular fine-tile luminance, contrast, four oriented-energy channels, signed temporal change, and horizontal/vertical motion evidence; pool those tile results into the final 8 × 8 grid off-chip. Mark stereo and higher grouping channels unimplemented.
+Emit the full 4,096-byte vector for every processed frame, at no more than 30 fps. Retain raw sensor windows around salient events. Use the first TinyTapeout synthesis profile only for monocular fine-tile luminance, contrast, four oriented-energy channels, signed temporal change, and horizontal/vertical motion evidence; map one 16 × 16 tile directly to each canonical cell at the current 256 × 256 input size. Also pool 2 × 2 off-chip for the retained 8 × 8 compatibility and A1 reflex path. Mark stereo and higher grouping channels unimplemented.
 
 This gives us a representation rich enough to evaluate with real downstream tasks while keeping the first silicon question small and falsifiable:
 
@@ -1514,7 +1528,7 @@ The canonical dense auditory output SHALL be a fixed
 8 × 16 × 8 = 1024 activation values per auditory frame
 ```
 
-This is the auditory analogue of `VisualFrame1024`. A visual hypercolumn describes
+This is the auditory analogue of `VisualFrame4096`. A visual hypercolumn describes
 several transforms at one retinal location; an auditory hypercolumn describes
 several transforms at one time-frequency location. The frequency axis is ordered
 low to high and the time axis is ordered oldest to newest.

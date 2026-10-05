@@ -27,9 +27,12 @@ from reference.visual_tile_model import TILE_SIZE, process_tile  # noqa: E402
 
 FRAME_SIZE = 256
 FRAME_RATE = 30
+MAX_FRAME_RATE = 30
 TILE_GRID = FRAME_SIZE // TILE_SIZE
 CELL_GRID = 8
 POOL_SIZE = TILE_GRID // CELL_GRID
+VISUAL_CHANNELS = 16
+IMPLEMENTED_VISUAL_CHANNEL_MASK = 0x03FF
 
 
 def _preview(frame: list[int], size: int = 32) -> list[int]:
@@ -91,6 +94,17 @@ def _pool_visual_tiles(records: list[list[int]]) -> list[list[int]]:
             cell.append(members[0][10] | members[1][10] | members[2][10] | members[3][10])
             cells.append(cell)
     return cells
+
+
+def _visual_vector(records: list[list[int]]) -> str:
+    """Serialize cell-major 16-channel records as a compact base64 byte vector."""
+    payload = bytearray()
+    for record in records:
+        if len(record) != 11:
+            raise ValueError("visual records must contain ten features and status")
+        payload.extend(record[:10])
+        payload.extend([0] * (VISUAL_CHANNELS - 10))
+    return base64.b64encode(payload).decode("ascii")
 
 
 def process_frame(
@@ -194,6 +208,8 @@ def generate(duration: float) -> dict[str, object]:
             "frame_png": _frame_png(frames[index]),
             "tiles": records,
             "cells": cells,
+            "visual_frame_4096": _visual_vector(records),
+            "visual_frame_1024": _visual_vector(cells),
             "field": field,
         })
 
@@ -211,6 +227,8 @@ def generate(duration: float) -> dict[str, object]:
         "preview_size": 32,
         "tile_grid": TILE_GRID,
         "cell_grid": CELL_GRID,
+        "primary_visual_grid": TILE_GRID,
+        "implemented_visual_channel_mask": IMPLEMENTED_VISUAL_CHANNEL_MASK,
         "frame_rate": FRAME_RATE,
         "sample_rate": SAMPLE_RATE,
         "visual": visual,

@@ -32,9 +32,10 @@ consistency evidence. The kernels share the same byte bus and run one work unit 
 a time. `AUDITORY_FIELD_V0` pools eight auditory slots into spectral, onset,
 modulation, spatial-movement, confidence, and slowly adapting novelty evidence.
 
-A host assembles 64 visual tile results into an 8x8x16 visual frame, or eight
-auditory time slots into an 8x16x8 auditory frame. Each canonical dense frame has
-1,024 feature bytes.
+A host assembles 256 visual tile results into the primary 16x16x16
+`VisualFrame4096`, capped at 30 frames/s. It also pools 2x2 into the retained
+8x8x16 `VisualFrame1024` compatibility and A1 reflex path. Eight auditory time
+slots form the independent 8x16x8, 1,024-byte auditory frame.
 
 The RTL is Verilog 2005. With Icarus Verilog, Verilator, Yosys, and the Python
 packages in `test/requirements.txt` installed (activate `.venv` first if using the
@@ -306,10 +307,10 @@ The success criterion is not classification accuracy. It is whether these output
 ## Status
 
 The first visual ASIC kernel has an RTL implementation and bit-accurate test
-model. The auditory path now has paired floating-point and proposed ASIC
-fixed-point reference models, with a frozen 16-band ERB filter bank and canonical
-1024-byte packing. The next implementation step is the time-multiplexed auditory
-RTL kernel, followed by combined synthesis and place-and-route.
+model. The auditory path has paired floating-point and fixed-point reference
+models, a frozen 16-band ERB filter bank, canonical 1024-byte packing, and
+synthesizable B0/B1 kernels. All four command-selected kernels pass combined RTL,
+lint, and synthesis checks; the next step is the updated physical build.
 
 ---
 

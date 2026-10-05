@@ -35,7 +35,7 @@ function drawImageAndFlow(entry){
 function drawVisualMap(entry){
   const canvas=$('visualMap'),context=clear(canvas);if(!entry)return;const feature=Number($('visualFeature').value),fine=$('visualLevel').value==='tiles',records=fine?entry.tiles:(entry.cells||entry.tiles),grid=Math.round(Math.sqrt(records.length)),cell=canvas.width/grid,scales=fine?visualTileScales:visualCellScales,limit=displayLimit(scales,feature,visualLocalSigned);
   records.forEach((record,index)=>{context.fillStyle=color(record[feature],visualLocalSigned.has(feature),limit);context.fillRect((index%grid)*cell,Math.floor(index/grid)*cell,cell-1,cell-1);context.fillStyle='#e5eef8';context.font=`${grid>8?9:11}px ui-monospace`;const value=visualLocalSigned.has(feature)?signed(record[feature]):record[feature];context.fillText(String(value),(index%grid)*cell+2,Math.floor(index/grid)*cell+(grid>8?10:14))});
-  $('visualGrid').textContent=`${grid}×${grid} ${fine?'fine A0 tile':'emitted cell'} raster; numbers are raw bytes`;
+  $('visualGrid').textContent=`${grid}×${grid} ${fine?'primary vector':'compatibility field'}; numbers are raw bytes`;
   $('visualScale').textContent=`display ${visualLocalSigned.has(feature)?'±':''}${limit}`;
   $('visualStatus').textContent=`status 0x${entry.field[17].toString(16).padStart(2,'0')}`;
 }

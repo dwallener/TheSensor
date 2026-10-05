@@ -95,6 +95,9 @@ paths:
 The harness shall display a shared timeline with raw or downsampled image/audio
 context, local feature records, visual translation/expansion/rotation/saliency,
 auditory spectrum/onset/spatial movement/novelty, command occupancy, and status.
+The primary visual model output is the 16 × 16 × 16 `VisualFrame4096`; the earlier
+8 × 8 × 16 `VisualFrame1024` remains available as a compatibility and reflex
+representation. Visual processing is capped at 30 frames/s in V0.
 Recorded replay must be deterministic. Synthetic scenes should include moving and
 looming visual targets, tones, clicks, amplitude modulation, and laterally moving
 sound so every major channel has an obvious expected motion.

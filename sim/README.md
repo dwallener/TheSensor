@@ -46,10 +46,15 @@ This retains the complete vertical field, discards equal portions of the left an
 right sides, and introduces no geometric distortion. `--fit native-crop` retains
 one source pixel per sensor pixel; `--fit letterbox` retains the complete field of
 view. The resulting 256 × 256 frame becomes a 16 × 16 raster of fine A0 tiles,
-which is pooled 2 × 2 into the canonical 8 × 8 emitted cells. Audio is converted
-to 48 kHz signed stereo PCM. Source name, exact interval, fit policy, and probe
-metadata are embedded in every replay.
+which directly forms the primary 16 × 16 × 16 `VisualFrame4096`. A 2 × 2 pooling
+step also retains the earlier 8 × 8 × 16 `VisualFrame1024` for compatibility and
+feeds A1 reflex integration. Audio is converted to 48 kHz signed stereo PCM.
+Source name, exact interval, fit policy, and probe metadata are embedded in every
+replay. V0 accepts at most 30 visual frames/s; the adapter rejects higher rates.
 
 Each visual record carries both a compact 32 × 32 numeric thumbnail for quick
 analysis and a compressed PNG of the complete 256 × 256 processed frame. The
 viewer uses the full frame; the thumbnail is only a backward-compatible fallback.
+It also carries base64-encoded 4,096-byte primary and 1,024-byte compatibility
+vectors. Both are cell-major, use the same sixteen-channel registry, and mark only
+channels 0–9 as implemented in the current monocular profile.

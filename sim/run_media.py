@@ -19,9 +19,11 @@ from reference.audio_model import SAMPLE_RATE  # noqa: E402
 from sim.run_reference import (  # noqa: E402
     CELL_GRID,
     FRAME_SIZE,
+    MAX_FRAME_RATE,
     TILE_GRID,
     _frame_png,
     _preview,
+    _visual_vector,
     process_audio_stream,
     process_frame,
 )
@@ -103,6 +105,8 @@ def generate(
     frame_rate: int,
     fit: str,
 ) -> dict[str, object]:
+    if not 0 < frame_rate <= MAX_FRAME_RATE:
+        raise ValueError(f"visual frame rate must be in 1..{MAX_FRAME_RATE} fps")
     metadata = probe(path)
     frames = decode_frames(path, start, duration, frame_rate, fit)
     if len(frames) < 2:
@@ -117,6 +121,8 @@ def generate(
             "frame_png": _frame_png(frames[index]),
             "tiles": records,
             "cells": cells,
+            "visual_frame_4096": _visual_vector(records),
+            "visual_frame_1024": _visual_vector(cells),
             "field": field,
         })
 
@@ -135,6 +141,8 @@ def generate(
         "preview_size": 32,
         "tile_grid": TILE_GRID,
         "cell_grid": CELL_GRID,
+        "primary_visual_grid": TILE_GRID,
+        "implemented_visual_channel_mask": 0x03FF,
         "frame_rate": frame_rate,
         "sample_rate": SAMPLE_RATE,
         "source": {
@@ -171,6 +179,8 @@ def main() -> None:
         parser.error("ffmpeg and ffprobe must be installed")
     if args.duration <= 0 or args.frame_rate <= 0:
         parser.error("duration and frame rate must be positive")
+    if args.frame_rate > MAX_FRAME_RATE:
+        parser.error(f"visual frame rate exceeds the V0 maximum of {MAX_FRAME_RATE} fps")
 
     metadata = probe(args.input)
     source_duration = float(metadata["format"]["duration"])

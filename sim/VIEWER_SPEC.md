@@ -15,7 +15,8 @@ dashboard.
 - The complete current 256 x 256 buffered image, formed by aspect-preserving
   vertical scaling followed by a central square crop, with its 8 x 8 emitted-cell
   grid. A 32 x 32 thumbnail may accompany it but is never the primary display.
-- A selectable 16 x 16 fine A0 tile map and 8 x 8 pooled emitted-cell map.
+- A selectable 16 x 16 primary `VisualFrame4096` map and 8 x 8 pooled
+  `VisualFrame1024` compatibility map. The primary map is selected by default.
 - Stable replay-wide 99th-percentile display gain for weak natural-image
   responses, with a raw-byte-scale switch and unmodified numeric labels.
 - A1 translation, expansion, rotation, saliency, activity, confidence, and
@@ -46,8 +47,9 @@ dashboard.
 - metadata describing the replay and sample timing;
 - downsampled image and waveform previews for display;
 - a compressed full-resolution grayscale frame for the primary visual display;
-- 256 fine A0 tile records, 64 pooled emitted-cell records, and one A1 field
-  record for each visual frame;
+- 256 fine A0 tile records, a 4,096-byte primary dense vector, 64 pooled
+  compatibility-cell records, a 1,024-byte compatibility vector, and one A1
+  field record for each visual frame;
 - eight B0 filterbank records and one B1 field record for each auditory update;
 - an optional `rtl_field` beside a reference field record.
 
