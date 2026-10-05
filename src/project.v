@@ -19,6 +19,7 @@ module tt_um_dwallener_sensor (
   localparam [1:0] ACTIVE_NONE   = 2'd0;
   localparam [1:0] ACTIVE_VISUAL = 2'd1;
   localparam [1:0] ACTIVE_AUDIO  = 2'd2;
+  localparam [1:0] ACTIVE_FIELD  = 2'd3;
 
   reg [1:0] active_core;
   reg command_error;
@@ -39,35 +40,53 @@ module tt_um_dwallener_sensor (
   wire audio_output_first;
   wire audio_output_last;
 
+  wire field_input_ready;
+  wire field_output_valid;
+  wire [7:0] field_output_data;
+  wire field_busy;
+  wire field_error;
+  wire field_output_first;
+  wire field_output_last;
+
   wire select_visual_command =
       (active_core == ACTIVE_NONE) && (ui_in == 8'ha0);
   wire select_audio_command =
       (active_core == ACTIVE_NONE) && (ui_in == 8'hb0);
+  wire select_field_command =
+      (active_core == ACTIVE_NONE) && (ui_in == 8'ha1);
   wire visual_input_valid = uio_in[0]
       && ((active_core == ACTIVE_VISUAL) || select_visual_command);
   wire audio_input_valid = uio_in[0]
       && ((active_core == ACTIVE_AUDIO) || select_audio_command);
+  wire field_input_valid = uio_in[0]
+      && ((active_core == ACTIVE_FIELD) || select_field_command);
 
   wire input_ready = ena && ((active_core == ACTIVE_NONE)
       || ((active_core == ACTIVE_VISUAL) && visual_input_ready)
-      || ((active_core == ACTIVE_AUDIO) && audio_input_ready));
+      || ((active_core == ACTIVE_AUDIO) && audio_input_ready)
+      || ((active_core == ACTIVE_FIELD) && field_input_ready));
   wire output_valid = (active_core == ACTIVE_VISUAL)
       ? visual_output_valid
-      : (active_core == ACTIVE_AUDIO) ? audio_output_valid : 1'b0;
+      : (active_core == ACTIVE_AUDIO) ? audio_output_valid
+      : (active_core == ACTIVE_FIELD) ? field_output_valid : 1'b0;
   wire [7:0] output_data = (active_core == ACTIVE_VISUAL)
       ? visual_output_data
-      : (active_core == ACTIVE_AUDIO) ? audio_output_data : 8'h00;
+      : (active_core == ACTIVE_AUDIO) ? audio_output_data
+      : (active_core == ACTIVE_FIELD) ? field_output_data : 8'h00;
   wire output_first = (active_core == ACTIVE_VISUAL)
       ? visual_output_first
-      : (active_core == ACTIVE_AUDIO) ? audio_output_first : 1'b0;
+      : (active_core == ACTIVE_AUDIO) ? audio_output_first
+      : (active_core == ACTIVE_FIELD) ? field_output_first : 1'b0;
   wire output_last = (active_core == ACTIVE_VISUAL)
       ? visual_output_last
-      : (active_core == ACTIVE_AUDIO) ? audio_output_last : 1'b0;
+      : (active_core == ACTIVE_AUDIO) ? audio_output_last
+      : (active_core == ACTIVE_FIELD) ? field_output_last : 1'b0;
   wire busy = (active_core != ACTIVE_NONE)
-      || visual_busy || audio_busy;
+      || visual_busy || audio_busy || field_busy;
   wire error = command_error
       || ((active_core == ACTIVE_VISUAL) && visual_error)
-      || ((active_core == ACTIVE_AUDIO) && audio_error);
+      || ((active_core == ACTIVE_AUDIO) && audio_error)
+      || ((active_core == ACTIVE_FIELD) && field_error);
 
   // These physical pins are outputs in this profile; consume their unused input
   // paths so the standard TinyTapeout bidirectional interface lints cleanly.
@@ -105,6 +124,22 @@ module tt_um_dwallener_sensor (
       .error        (audio_error)
   );
 
+  visual_field_core field_core (
+      .clk          (clk),
+      .rst_n        (rst_n),
+      .enable       (ena),
+      .input_data   (ui_in),
+      .input_valid  (field_input_valid),
+      .input_ready  (field_input_ready),
+      .output_data  (field_output_data),
+      .output_valid (field_output_valid),
+      .output_ready (uio_in[1]),
+      .output_first (field_output_first),
+      .output_last  (field_output_last),
+      .busy         (field_busy),
+      .error        (field_error)
+  );
+
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       active_core <= ACTIVE_NONE;
@@ -116,6 +151,9 @@ module tt_um_dwallener_sensor (
           command_error <= 1'b0;
         end else if (ui_in == 8'hb0) begin
           active_core <= ACTIVE_AUDIO;
+          command_error <= 1'b0;
+        end else if (ui_in == 8'ha1) begin
+          active_core <= ACTIVE_FIELD;
           command_error <= 1'b0;
         end else begin
           command_error <= 1'b1;

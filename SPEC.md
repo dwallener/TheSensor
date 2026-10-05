@@ -1856,3 +1856,59 @@ This asks the auditory version of the same falsifiable question as vision:
 > Can a tiny deterministic auditory kernel turn synchronized PCM into compact
 > time-frequency and spatial evidence that is more useful per byte and per joule
 > than the waveform itself?
+
+---
+
+# Part V — Field integration and reflex processing
+
+## 56. Visual field kernel
+
+`VISUAL_FIELD_V0` SHALL be selected by command `0xA1`. It consumes one implicit
+8 × 8 raster of `MONO_TEMPORAL_V0` records. The host SHALL omit each record's
+`0x5A` marker and send the ten feature bytes followed by its status byte, for 704
+payload bytes total.
+
+The response SHALL be exactly 18 bytes: marker `0x5C`, sixteen field features in
+the order below, and a status byte formed by bitwise OR of all tile status bytes.
+
+| Index | Feature | Type | Scaling |
+| ---: | --- | --- | --- |
+| 0 | mean luminance | `uint8` | sum divided by 64 |
+| 1 | mean contrast | `uint8` | sum divided by 64 |
+| 2–5 | four mean oriented energies | `uint8` | sum divided by 64 |
+| 6 | mean temporal change | `int8` | signed sum divided by 64 |
+| 7–8 | global horizontal/vertical motion | `int8` | signed sum divided by 64 |
+| 9 | mean motion confidence | `uint8` | sum divided by 64 |
+| 10 | expansion/contraction | `int8` | centred dot product divided by 256 |
+| 11 | rotation | `int8` | centred cross product divided by 256 |
+| 12–13 | horizontal/vertical saliency bias | `int8` | activity moment divided by 512 |
+| 14 | mean visual activity | `uint8` | mean of saturated contrast + absolute change + confidence |
+| 15 | directional-motion consistency | `uint8` | magnitude of summed motion divided by 32, saturated |
+
+For tile coordinates `x,y` in `0..7`, define `x2 = 2x - 7` and `y2 = 2y - 7`.
+With signed local motion `mx,my`:
+
+```text
+expansion = sum(x2*mx + y2*my)
+rotation  = sum(x2*my - y2*mx)
+```
+
+Positive expansion is outward motion. These are bounded reflex evidences, not
+calibrated optical-flow divergence or time-to-contact. Saliency uses per-tile
+activity saturated to one byte before its spatial moment is accumulated.
+
+## 57. Visual field acceptance tests
+
+The kernel SHALL:
+
+1. preserve means for a spatially uniform field;
+2. report translation without false expansion or rotation for uniform motion;
+3. report positive expansion for a centred outward field;
+4. report signed rotation for a centred rotational field;
+5. move saliency bias toward an isolated active tile;
+6. match the bit-accurate reference for randomized records and backpressure;
+7. propagate every input status bit;
+8. leave `0xA0` and `0xB0` behavior bit-identical.
+
+The next planned processing stages are normative only after their byte contracts
+are frozen. Their current order and intent are recorded in `PLAN.md`.

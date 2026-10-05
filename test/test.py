@@ -18,6 +18,10 @@ from reference.audio_model import (  # noqa: E402
     pack_time_slot,
     process_window_fixed,
 )
+from reference.visual_field_model import (  # noqa: E402
+    COMMAND as FIELD_COMMAND,
+    process_visual_field,
+)
 
 
 def _pin(value, bit):
@@ -86,6 +90,14 @@ async def process_audio(dut, left, right, stall=False):
         await send_byte(dut, right_word & 0xFF)
         await send_byte(dut, right_word >> 8)
     return await receive_response(dut, length=130, stall=stall)
+
+
+async def process_field(dut, records, stall=False):
+    await send_byte(dut, FIELD_COMMAND)
+    for record in records:
+        for value in record:
+            await send_byte(dut, value)
+    return await receive_response(dut, length=18, stall=stall)
 
 
 @cocotb.test()
@@ -192,3 +204,43 @@ async def test_stereo_filterbank(dut):
                 f"got {actual[mismatch]:#04x}, expected {expected[mismatch]:#04x}; "
                 f"actual={actual}, expected={expected}"
             )
+
+
+@cocotb.test()
+async def test_visual_field(dut):
+    """Pool local records into translation, expansion, rotation, and saliency."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+    await reset(dut)
+
+    neutral = [[64, 10, 20, 21, 22, 23, 0, 0, 0, 0, 0] for _ in range(64)]
+    translation = [
+        [64, 20, 30, 31, 32, 33, 0, 20, 0, 40, 0] for _ in range(64)
+    ]
+    expansion = []
+    rotation = []
+    for tile in range(64):
+        x2 = 2 * (tile & 7) - 7
+        y2 = 2 * (tile >> 3) - 7
+        expansion.append([
+            80, 24, 30, 30, 30, 30, 0,
+            (x2 * 8) & 0xFF, (y2 * 8) & 0xFF, 100, 0,
+        ])
+        rotation.append([
+            80, 24, 30, 30, 30, 30, 0,
+            (-y2 * 8) & 0xFF, (x2 * 8) & 0xFF, 100, 0,
+        ])
+    localized = [[0] * 11 for _ in range(64)]
+    localized[63] = [90, 200, 0, 0, 0, 0, 40, 0, 0, 55, 0x08]
+
+    rng = random.Random(0xA1F13D)
+    randomized = [
+        [rng.randrange(256) for _ in range(11)] for _ in range(64)
+    ]
+    cases = [neutral, translation, expansion, rotation, localized, randomized]
+
+    for index, records in enumerate(cases):
+        actual = await process_field(dut, records, stall=(index & 1) == 1)
+        expected = process_visual_field(records)
+        assert actual == expected, (
+            f"visual field case {index}: actual={actual}, expected={expected}"
+        )
