@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "The Sensor: Monocular Temporal Kernel"
+  title:        "The Sensor: Visual and Auditory Kernels"
   author:       "Damir Wallener"
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "A tile-streaming visual front end with oriented, temporal, and motion features"
+  description:  "Shared visual-motion and stereo auditory sensory front ends"
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000
 
@@ -19,6 +19,7 @@ project:
   source_files:
     - "project.v"
     - "mono_temporal_core.v"
+    - "stereo_filterbank_core.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).

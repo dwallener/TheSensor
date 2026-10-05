@@ -1,11 +1,15 @@
 ## How it works
 
-The Sensor is a streaming visual feature extractor. This first ASIC profile processes
-one current and one previous 16x16 monochrome image tile. It computes luminance,
-contrast, four oriented edge energies, signed temporal change, horizontal and
-vertical Reichardt-like motion, and motion confidence. Only two 16-pixel line
-buffers are retained (eight-bit current pixels and four-bit previous pixels), so
-pixels are consumed as a stream rather than stored as a complete frame.
+The Sensor contains command-selected visual and auditory feature extractors on one
+shared byte-stream interface. Work units are serialized.
+
+### Visual command `A0`
+
+The visual kernel processes one current and one previous 16x16 monochrome image
+tile. It computes luminance, contrast, four oriented edge energies, signed temporal
+change, horizontal and vertical Reichardt-like motion, and motion confidence. Only
+two 16-pixel line buffers are retained, so pixels are consumed as a stream rather
+than stored as a complete frame.
 
 The host sends command `A0`, then 256 interleaved pairs of `current, previous`
 pixels in raster order. The core returns 12 bytes:
@@ -26,6 +30,21 @@ pixels in raster order. The core returns 12 bytes:
 Signed values use two's-complement. Status bits 0 through 3 report saturation of
 temporal change, horizontal motion, vertical motion, and confidence respectively.
 
+### Auditory command `B0`
+
+Send 256 repetitions of four bytes: signed PCM16 left LSB/MSB, then signed PCM16
+right LSB/MSB. The core returns 130 bytes:
+
+1. `5B` response marker
+2. sixteen low-to-high frequency-band records, each containing eight bytes:
+   left energy, right energy, mono energy, signed energy delta, onset strength,
+   signed right-minus-left level, signed phase lead, and stereo confidence
+3. status byte
+
+The fixed ERB-spaced bands run from 125 Hz through 8 kHz. Status bit 0 reports an
+exact full-scale input sample, bit 2 reports internal state saturation, and bit 3
+reports a command/configuration error. Other status bits are reserved as zero.
+
 ## How to test
 
 Set `ena` high. Present the input byte on `ui_in`, assert `uio_in[0]`, and wait for
@@ -39,5 +58,7 @@ Run `make test` from the repository root for bit-accurate cocotb tests.
 ## External hardware
 
 A controller or FPGA must buffer image-sensor frames, divide them into 16x16 tiles,
-and stream current/previous tile pairs to the ASIC. Image capture and frame storage
-are intentionally outside this TinyTapeout block.
+and stream current/previous tile pairs to the ASIC. It must likewise acquire and
+synchronize the microphone ADC streams, construct overlapping 256-sample windows,
+and assemble eight returned slots into each auditory frame. Sensor acquisition and
+raw buffering are intentionally outside this TinyTapeout block.

@@ -1,8 +1,10 @@
 # The Sensor — Engineering Specification
 
-**Document status:** Draft 0.3  
-**System status:** Architecture definition  
-**Scope of this revision:** Stereo visual and auditory acquisition and early processing
+**Document status:** Draft 0.4
+
+**System status:** Visual and auditory reference RTL implemented; combined physical validation pending
+
+**Scope of this revision:** Stereo visual and auditory acquisition, representation, and early-processing kernels
 
 This document converts the sensory architecture described in the project README into testable engineering requirements. Requirements use **SHALL**, recommendations use **SHOULD**, and options use **MAY**.
 
@@ -1676,10 +1678,10 @@ available for reprocessing.
 
 ## 52. First auditory ASIC kernel
 
-The first auditory synthesis profile is named `STEREO_FILTERBANK_V0`. It is a
-candidate addition to the same 6 × 4 design as `MONO_TEMPORAL_V0`; it is not a
-separate claim that the design fits until combined synthesis and place-and-route
-pass.
+The first auditory synthesis profile is named `STEREO_FILTERBANK_V0`. It is
+implemented alongside `MONO_TEMPORAL_V0` in the same 6 × 4 design and selected by
+command byte. Passing RTL simulation and generic synthesis do not establish that
+the combined design fits; combined place-and-route remains the authority.
 
 The existing physical result provides strong motivation for the experiment:
 the visual-only design used less than 8% standard-cell utilization and closed the
@@ -1748,7 +1750,18 @@ auditory kernel while sharing the existing byte buses and handshake pins. V0 MAY
 serialize visual and auditory work units; no simultaneous command execution is
 required.
 
-### 52.3 Arithmetic and state budget
+### 52.3 Physical partitioning
+
+Visual and auditory traffic uses the same TinyTapeout byte and handshake pins, so
+there are no modality-specific package pads to place. The combined physical build
+SHOULD nevertheless preserve the two RTL blocks as placement groups when the flow
+supports it. The auditory group SHOULD occupy the die region diagonally opposite
+the dominant visual group—kitty-corner across the core—with the dispatcher and
+shared interface between them. This is a locality and routing objective, not a
+reason to accept congestion or timing failure. The first unconstrained combined
+layout SHALL be inspected before coordinates or hard placement regions are frozen.
+
+### 52.4 Arithmetic and state budget
 
 The first implementation SHOULD use:
 
@@ -1830,12 +1843,13 @@ to learned adapters as a 1,024-dimensional vector or preserve its time-frequency
 shape for convolution or attention. Generate sparse events from it, but do not make
 events the only record of the acoustic scene.
 
-For the next synthesis experiment, add `STEREO_FILTERBANK_V0` behind command
-`0xB0`, using one shared sequential band engine and the existing byte handshake.
-Begin with generated impulses, tones, chirps, noise, known stereo delays, and
-recorded PCM. Only after the fixed-point representation is useful and the combined
-physical build closes should microphone capture be connected directly to the live
-pipeline.
+`STEREO_FILTERBANK_V0` is now implemented behind command `0xB0`, using one shared
+sequential arithmetic engine and the existing byte handshake. Its RTL is checked
+bit for bit against the fixed-point model for silence and asymmetric stereo tone
+inputs; the software model additionally covers impulses, tones, chirps, noise,
+level offsets, and channel faults. Combined place-and-route and gate-level replay
+are the next acceptance gates. Only after those close should microphone capture be
+connected directly to the live pipeline.
 
 This asks the auditory version of the same falsifiable question as vision:
 

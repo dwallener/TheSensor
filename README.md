@@ -15,14 +15,21 @@ The Sensor aims to do the same.
 ## Documentation
 
 - [Engineering specification](SPEC.md) — normative requirements and current implementation decisions
-- [ASIC protocol and pinout](docs/info.md) — `MONO_TEMPORAL_V0` byte-stream interface
+- [ASIC protocol and pinout](docs/info.md) — shared visual/audio byte-stream interface
 
 ## Current implementation
 
-The first synthesizable target is `MONO_TEMPORAL_V0`: a TinyTapeout/IHP CMOS5L
-streaming kernel that turns current and previous 16x16 monochrome tiles into ten
-visual features. A host assembles 64 tile results into the first ten channels of
-the specified 8x8x16 (1024-byte) visual frame.
+The current synthesizable target is `MULTISENSE_V0`, a TinyTapeout/IHP CMOS5L
+design containing two command-selected kernels. `MONO_TEMPORAL_V0` turns current
+and previous 16x16 monochrome tiles into ten visual features.
+`STEREO_FILTERBANK_V0` turns a 256-sample stereo PCM window into sixteen
+frequency-band records containing energy, onset, level, phase-lead, and stereo
+confidence evidence. The two kernels share the same byte bus and run one work
+unit at a time.
+
+A host assembles 64 visual tile results into an 8x8x16 visual frame, or eight
+auditory time slots into an 8x16x8 auditory frame. Each canonical dense frame has
+1,024 feature bytes.
 
 The RTL is Verilog 2005. With Icarus Verilog, Verilator, Yosys, and the Python
 packages in `test/requirements.txt` installed (activate `.venv` first if using the
