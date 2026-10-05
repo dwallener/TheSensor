@@ -791,8 +791,7 @@ The first auditory vertical slice is complete when it demonstrates all of the fo
 - One shared I²S data wire versus separate data wires.
 - Whether the first board stores 16-, 24-, or 32-bit PCM in external memory.
 - FPGA versus MCU ownership of I²S capture and block formation.
-- FFT versus streaming filter bank for the first hardware percept path.
-- Number and spacing of output frequency bands.
+- Exact coefficient set and state width for the selected 16-band ASIC filter bank.
 - Whether GCC-PHAT belongs in FPGA logic or host/reference software initially.
 - Required raw-history duration and cross-modal trigger policy.
 - Temperature source for speed-of-sound correction.
@@ -801,7 +800,9 @@ The first auditory vertical slice is complete when it demonstrates all of the fo
 
 Prototype with **two PUI DMM-4026-B-I2S evaluation boards or equivalent modules**, driven from one 3.072 MHz bit clock and one 48 kHz word-select clock. Capture signed PCM into 256-sample stereo blocks, retain raw samples in a five-second ring, and replay committed blocks into onset, spectral, and localization pipelines with a 128-sample hop.
 
-This is intentionally ordinary digital audio plumbing. The novel work begins after capture: deciding which fast and slow auditory representations are compact, stable, and useful to a downstream learner.
+This is intentionally ordinary digital audio plumbing. The canonical dense
+representation and first ASIC experiment are specified in Part IV; recorded PCM
+remains the reference evidence used to evaluate them.
 
 ---
 
@@ -1326,15 +1327,11 @@ omitted. This makes every work unit self-contained and bounds the silicon line
 storage; the off-chip pooling stage accounts for the slightly smaller sample count
 at fine-tile boundaries.
 
-This is 648 pixel bytes for two 18 × 18 patches plus a small header. At VGA, there are 40 × 30 = 1,200 non-overlapping 16 × 16 processing tiles. At 30 frames/s, naïve halo-expanded current/previous transport is approximately 23.3 MB/s before metadata and handshakes. This is plausible on a 50 MHz byte interface but does not provide unlimited margin. The external scheduler SHOULD therefore support one or more of:
-
-- 16 × 16 active cells;
-- row-strip reuse that avoids retransmitting overlapping halo pixels;
-- reduced frame rate;
-- current-frame-only spatial mode;
-- precomputed row or tile statistics.
-
-The selected transport schedule SHALL be proven against actual I/O cycles before RTL is frozen.
+This is exactly 512 pixel bytes plus one command byte. At VGA, there are 40 × 30 =
+1,200 non-overlapping 16 × 16 processing tiles. At 30 frames/s, current/previous
+transport occupies 18.43 MB/s before responses and handshake stalls. Including the
+current 12-byte response and one finalization clock, the frozen schedule uses about
+37.9% of a 50 MHz byte-clock budget at 30 fps and about 75.7% at 60 fps.
 
 ### 43.2 Required kernel outputs
 
@@ -1501,3 +1498,316 @@ Emit the full 1,024-byte vector for every processed frame. Retain raw sensor win
 This gives us a representation rich enough to evaluate with real downstream tasks while keeping the first silicon question small and falsifiable:
 
 > Can a tiny deterministic visual kernel turn buffered pixels into local evidence that is more useful per byte and per joule than the pixels themselves?
+
+---
+
+# Part IV — Auditory processing and representation
+
+## 49. Representation decision
+
+The canonical dense auditory output SHALL be a fixed
+**8 time slots × 16 frequency bands × 8 feature channels** tensor:
+
+```text
+8 × 16 × 8 = 1024 activation values per auditory frame
+```
+
+This is the auditory analogue of `VisualFrame1024`. A visual hypercolumn describes
+several transforms at one retinal location; an auditory hypercolumn describes
+several transforms at one time-frequency location. The frequency axis is ordered
+low to high and the time axis is ordered oldest to newest.
+
+At the default 48 kHz sample rate and 128-sample hop, consecutive time slots are
+2.667 ms apart. One `AudioFrame1024` therefore advances every eight hops, or
+21.333 ms, and contains features whose 256-sample analysis windows overlap by 50%.
+The frame rate is 46.875 frames/s and the dense activation bandwidth is 48,000
+bytes/s before headers. That rate is small enough to emit every frame rather than
+making sparsity a correctness requirement.
+
+```text
+AudioFrame1024 {
+    AudioFrameHeader header;
+    AudioCell cells[8][16];
+}
+
+AudioCell {                    // 8 bytes
+    uint8 left_energy;
+    uint8 right_energy;
+    uint8 mono_energy;
+    int8  energy_delta;
+    uint8 onset_strength;
+    int8  level_difference;
+    int8  phase_lead;
+    uint8 stereo_confidence;
+}
+```
+
+`AudioFrameHeader` SHALL identify at least:
+
+- first and last source sample indices;
+- centre timestamp of each time slot or an equivalent first timestamp plus fixed
+  hop;
+- sample rate, analysis-window length, and hop length;
+- frequency-bank and channel schema identifiers;
+- source, calibration, and configuration identifiers;
+- implemented-channel and valid-slot masks;
+- clipping, discontinuity, arithmetic-saturation, and sensor-health flags.
+
+Flattening SHALL use:
+
+```text
+index = ((time_slot * 16) + frequency_band) * 8 + channel
+```
+
+An implementation MAY expose channel-major `[8][8][16]` or band-major views, but
+the serialized ordering and channel meanings SHALL remain stable.
+
+## 50. Auditory channel registry
+
+| Channel | Name | Type | Meaning |
+| ---: | --- | --- | --- |
+| 0 | `left_energy` | `uint8` | compressed energy at the left microphone |
+| 1 | `right_energy` | `uint8` | compressed energy at the right microphone |
+| 2 | `mono_energy` | `uint8` | common or summed band energy |
+| 3 | `energy_delta` | `int8` | signed late-half minus early-half energy |
+| 4 | `onset_strength` | `uint8` | positive band-energy increase above local floor |
+| 5 | `level_difference` | `int8` | signed right-minus-left band level |
+| 6 | `phase_lead` | `int8` | signed right-leading versus left-leading evidence |
+| 7 | `stereo_confidence` | `uint8` | validity/coherence of the stereo cues |
+
+Positive channels 5 and 6 SHALL indicate evidence for a source toward the right
+microphone. The precise companding law, full-scale reference, band edges, and
+phase-lead scaling SHALL be carried by `channel_schema_id` and tested bit for bit.
+Silence, clipping, invalid samples, and weak stereo evidence SHALL remain
+distinguishable. A low-confidence zero phase lead SHALL not be interpreted as a
+confident centred source.
+
+The initial 16 bands SHOULD be approximately logarithmic and cover roughly 125 Hz
+through 8 kHz. Exact centre frequencies SHALL be selected together with the
+integer coefficient set. Frequencies above the highest represented band remain
+available in retained PCM but need not consume a dense channel in V0.
+
+## 51. Processing pipeline
+
+The first reference pipeline SHALL be:
+
+```text
+synchronized signed PCM
+        │
+        v
+DC removal / fixed common scaling / health checks
+        │
+        v
+16-band analysis bank for left and right channels
+        │
+        ├── per-ear energy and early/late energy change
+        ├── onset evidence
+        └── stereo level, phase-lead, and confidence evidence
+        │
+        v
+one 16 × 8 time-slot record every 128 samples
+        │
+        v
+eight records assembled into AudioFrame1024
+        │
+        ├── dense model input
+        └── optional onset/localization tokens
+```
+
+### 51.1 Filter-bank choice
+
+The first ASIC SHOULD use a time-multiplexed bank of fixed-coefficient resonators
+or similarly small band-pass sections rather than a general-purpose FFT. One
+arithmetic engine SHALL be reused across bands and ears. This choice provides:
+
+- stable, inspectable band identities;
+- work proportional to the chosen 16 bands rather than an FFT fabric sized for
+  bins that are immediately pooled away;
+- natural streaming and bounded state;
+- cheap early/late energy and onset measurements;
+- a direct path to per-band stereo comparison;
+- coefficient and state widths that can be reduced through synthesis experiments.
+
+The software reference MAY also compute an FFT and map it into the identical 16
+bands. The resonator and FFT implementations SHALL be compared at the canonical
+feature boundary, not by requiring their internal states to match.
+
+### 51.2 Stereo evidence
+
+The ASIC SHALL emit evidence, not an overconfident bearing estimate. Per-band
+right-minus-left level and phase-lead values allow a downstream process to combine
+frequency bands, microphone calibration, and room context. True fractional-sample
+ITD, GCC-PHAT, multi-source separation, and final bearing MAY remain in FPGA or
+software for V0.
+
+Broadband onset and localization tokens MAY be derived off-chip by pooling the
+dense cells with confidence weighting. Raw PCM around selected events SHALL remain
+available for reprocessing.
+
+## 52. First auditory ASIC kernel
+
+The first auditory synthesis profile is named `STEREO_FILTERBANK_V0`. It is a
+candidate addition to the same 6 × 4 design as `MONO_TEMPORAL_V0`; it is not a
+separate claim that the design fits until combined synthesis and place-and-route
+pass.
+
+The existing physical result provides strong motivation for the experiment:
+the visual-only design used less than 8% standard-cell utilization and closed the
+50 MHz target without setup, hold, DRC, LVS, antenna, or power-grid violations.
+Filler cells are not useful logic, so their large count does not mean the device is
+full. The combined physical flow remains the authority because an audio filter bank
+may create different routing, fanout, and clock-load pressure.
+
+### 52.1 Input contract
+
+The ASIC does not receive analogue voltages. The acquisition device or microphone
+ADC SHALL first produce two synchronized signed PCM streams. The host SHALL narrow
+or saturate them to signed 16-bit samples using one documented common scale.
+
+One independent auditory work unit is:
+
+```text
+0xB0
+256 repetitions of {
+    left_sample_lsb,
+    left_sample_msb,
+    right_sample_lsb,
+    right_sample_msb
+}
+```
+
+Samples are signed two's-complement little-endian. The 256-sample window is 5.333 ms
+at 48 kHz. Consecutive work units begin 128 samples apart; the external scheduler
+resends the overlapping half-window. This small bandwidth cost makes each work unit
+self-contained and exactly replayable without requiring the ASIC to retain raw PCM
+between commands. Resonator state SHALL reset at the beginning of every `0xB0`
+work unit. Early/late comparison SHALL be derived entirely within that window.
+
+The core MAY deassert `input_ready` after accepting a stereo sample while its
+shared arithmetic engine updates all band/channel states. The sender SHALL hold the
+next byte until ready returns. Continuous one-byte-per-clock acceptance is not
+required for audio.
+
+### 52.2 Output contract
+
+The response is:
+
+```text
+0x5B
+16 repetitions of {
+    left_energy,
+    right_energy,
+    mono_energy,
+    energy_delta,
+    onset_strength,
+    level_difference,
+    phase_lead,
+    stereo_confidence
+}
+status
+```
+
+Band records are emitted from lowest to highest frequency. The response is exactly
+130 bytes. Status SHALL report at least input clipping, invalid input, internal
+arithmetic saturation, and configuration error. `output_first` marks `0x5B` and
+`output_last` marks the status byte.
+
+Command `0xA0` SHALL retain its current visual meaning. A combined profile named
+`MULTISENSE_V0` SHALL dispatch `0xA0` to the visual kernel and `0xB0` to the
+auditory kernel while sharing the existing byte buses and handshake pins. V0 MAY
+serialize visual and auditory work units; no simultaneous command execution is
+required.
+
+### 52.3 Arithmetic and state budget
+
+The first implementation SHOULD use:
+
+- one shared coefficient multiply or shift-add unit;
+- one shared energy/cross-product unit;
+- fixed band coefficients stored as constants rather than writable RAM;
+- bounded signed state per ear and band;
+- high-bit or block-scaled products where full precision does not improve the
+  canonical byte output;
+- explicit saturation at every narrowing boundary;
+- no divider, square root, logarithm, or arctangent in hardware.
+
+Energy compression MAY use leading-one position plus selected mantissa bits. Phase
+lead MAY use a narrowed cross-product or state-space determinant with confidence
+reported separately. Every approximation SHALL have a bit-accurate software model
+and error plots against a floating-point reference.
+
+At 48 kHz and 50 MHz, approximately 1,041 ASIC clocks elapse per new stereo sample.
+Because 50% overlap causes every sample to be processed twice, the ASIC receives an
+average of 96,000 stereo sample pairs/s, or about 521 clocks per transmitted pair.
+Sixteen bands across two ears require 32 band-state updates per pair, leaving about
+16 clocks per update for a shared sequential datapath before output overhead. I/O
+bandwidth is also small: overlapping 16-bit stereo windows require 384,000 input
+bytes/s, and 130 bytes per hop require 48,750 output bytes/s.
+
+## 53. Auditory token adapter
+
+The dense tensor is primary. Optional auditory tokens SHOULD describe changes or
+compact tracks, including:
+
+- broadband or band-limited onset;
+- impulsive transient;
+- left/right motion or bearing change;
+- persistent tonal component;
+- clipping, silence, discontinuity, or loss of stereo confidence.
+
+Tokens SHALL carry centre time, integration window, band or band range, signed
+spatial evidence, magnitude, confidence, calibration identity, and source-frame
+identity. They SHALL not convert acoustic evidence into words, speaker identities,
+or object labels on the sensor board.
+
+## 54. Auditory representation acceptance tests
+
+The software representation is acceptable when:
+
+1. Silence produces near-zero energy and explicitly low stereo confidence without
+   producing a confident centred source.
+2. A tone swept across the supported range moves monotonically through the expected
+   frequency bands without unstable holes.
+3. A rising tone burst produces positive energy delta and onset in the correct
+   time-frequency cells; its disappearance produces negative delta.
+4. Equal in-phase stereo input produces near-zero level and phase-lead evidence
+   with high confidence above the energy floor.
+5. Known level offsets produce correctly signed and monotonic channel 5 values.
+6. Known sample and fractional-sample delays produce correctly signed channel 6
+   values over bands where phase is unambiguous.
+7. Uncorrelated stereo noise reduces stereo confidence relative to a shared source.
+8. Clipping, missing samples, channel swap, polarity reversal, and a dead channel
+   produce explicit health or confidence changes.
+9. Recorded replay reproduces bit-identical `AudioFrame1024` values and tokens.
+10. Visual and auditory records align on the common device timeline.
+
+The auditory ASIC kernel is acceptable when:
+
+1. Directed and randomized fixed-point tests match the software model exactly.
+2. Backpressure at every byte boundary cannot corrupt left/right or sample order.
+3. Processing sustains 48 kHz stereo with at least 4× cycle margin.
+4. Combined visual/audio synthesis fits the 6 × 4 allocation with routing margin.
+5. Combined place-and-route meets the 50 MHz target at required corners.
+6. Gate-level replay matches RTL and the reference model.
+7. Adding audio does not change the existing `0xA0` visual response.
+
+## 55. Current auditory-pipeline recommendation
+
+Treat **`AudioFrame1024`—eight short time slices of sixteen frequency-band
+hypercolumns—as the ground-truth dense auditory representation**. Feed it directly
+to learned adapters as a 1,024-dimensional vector or preserve its time-frequency
+shape for convolution or attention. Generate sparse events from it, but do not make
+events the only record of the acoustic scene.
+
+For the next synthesis experiment, add `STEREO_FILTERBANK_V0` behind command
+`0xB0`, using one shared sequential band engine and the existing byte handshake.
+Begin with generated impulses, tones, chirps, noise, known stereo delays, and
+recorded PCM. Only after the fixed-point representation is useful and the combined
+physical build closes should microphone capture be connected directly to the live
+pipeline.
+
+This asks the auditory version of the same falsifiable question as vision:
+
+> Can a tiny deterministic auditory kernel turn synchronized PCM into compact
+> time-frequency and spatial evidence that is more useful per byte and per joule
+> than the waveform itself?
