@@ -20,6 +20,7 @@ from sim.run_reference import (  # noqa: E402
     CELL_GRID,
     FRAME_SIZE,
     TILE_GRID,
+    _frame_png,
     _preview,
     process_audio_stream,
     process_frame,
@@ -113,6 +114,7 @@ def generate(
         visual.append({
             "time": index / frame_rate,
             "preview": _preview(frames[index]),
+            "frame_png": _frame_png(frames[index]),
             "tiles": records,
             "cells": cells,
             "field": field,

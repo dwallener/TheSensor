@@ -49,3 +49,7 @@ view. The resulting 256 × 256 frame becomes a 16 × 16 raster of fine A0 tiles,
 which is pooled 2 × 2 into the canonical 8 × 8 emitted cells. Audio is converted
 to 48 kHz signed stereo PCM. Source name, exact interval, fit policy, and probe
 metadata are embedded in every replay.
+
+Each visual record carries both a compact 32 × 32 numeric thumbnail for quick
+analysis and a compressed PNG of the complete 256 × 256 processed frame. The
+viewer uses the full frame; the thumbnail is only a backward-compatible fallback.

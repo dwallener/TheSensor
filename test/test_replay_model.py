@@ -1,6 +1,9 @@
-"""Tests for framebuffer tiling and canonical visual-cell pooling."""
+"""Tests for framebuffer replay encoding and canonical visual-cell pooling."""
 
-from sim.run_reference import CELL_GRID, TILE_GRID, _pool_visual_tiles
+import base64
+import struct
+
+from sim.run_reference import CELL_GRID, FRAME_SIZE, TILE_GRID, _frame_png, _pool_visual_tiles
 
 
 def test_pool_visual_tiles_averages_unsigned_and_signed_channels() -> None:
@@ -29,3 +32,13 @@ def test_pool_visual_tiles_averages_unsigned_and_signed_channels() -> None:
     assert cells[0][6] == ((-8 + -7 + -8 + -7) // 4) & 0xFF
     assert cells[0][7] == ((8 + 7 + 8 + 7) // 4) & 0xFF
     assert cells[0][10] == 0x07
+
+
+def test_full_frame_png_has_sensor_dimensions() -> None:
+    uri = _frame_png([73] * (FRAME_SIZE * FRAME_SIZE))
+    prefix = "data:image/png;base64,"
+    assert uri.startswith(prefix)
+    png = base64.b64decode(uri[len(prefix) :])
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height = struct.unpack(">II", png[16:24])
+    assert (width, height) == (FRAME_SIZE, FRAME_SIZE)

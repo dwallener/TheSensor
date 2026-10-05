@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
+import struct
 import sys
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +39,32 @@ def _preview(frame: list[int], size: int = 32) -> list[int]:
         for y in range(size)
         for x in range(size)
     ]
+
+
+def _frame_png(frame: list[int]) -> str:
+    """Encode a full-resolution grayscale frame as a dependency-free PNG URI."""
+    if len(frame) != FRAME_SIZE * FRAME_SIZE:
+        raise ValueError(f"frame must contain exactly {FRAME_SIZE * FRAME_SIZE} pixels")
+
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + kind
+            + payload
+            + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+        )
+
+    scanlines = b"".join(
+        b"\x00" + bytes(frame[y * FRAME_SIZE : (y + 1) * FRAME_SIZE])
+        for y in range(FRAME_SIZE)
+    )
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk("IHDR".encode(), struct.pack(">IIBBBBB", FRAME_SIZE, FRAME_SIZE, 8, 0, 0, 0, 0))
+        + chunk("IDAT".encode(), zlib.compress(scanlines, level=6))
+        + chunk("IEND".encode(), b"")
+    )
+    return "data:image/png;base64," + base64.b64encode(png).decode("ascii")
 
 
 def _pool_visual_tiles(records: list[list[int]]) -> list[list[int]]:
@@ -162,6 +191,7 @@ def generate(duration: float) -> dict[str, object]:
         visual.append({
             "time": index / FRAME_RATE,
             "preview": _preview(frames[index]),
+            "frame_png": _frame_png(frames[index]),
             "tiles": records,
             "cells": cells,
             "field": field,

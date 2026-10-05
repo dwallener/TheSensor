@@ -12,8 +12,9 @@ dashboard.
 
 ### Visual path
 
-- The current 256 x 256 buffered image, formed by aspect-preserving vertical
-  scaling followed by a central square crop, with its 8 x 8 emitted-cell grid.
+- The complete current 256 x 256 buffered image, formed by aspect-preserving
+  vertical scaling followed by a central square crop, with its 8 x 8 emitted-cell
+  grid. A 32 x 32 thumbnail may accompany it but is never the primary display.
 - A selectable 16 x 16 fine A0 tile map and 8 x 8 pooled emitted-cell map.
 - Stable replay-wide 99th-percentile display gain for weak natural-image
   responses, with a raw-byte-scale switch and unmodified numeric labels.
@@ -44,6 +45,7 @@ dashboard.
 
 - metadata describing the replay and sample timing;
 - downsampled image and waveform previews for display;
+- a compressed full-resolution grayscale frame for the primary visual display;
 - 256 fine A0 tile records, 64 pooled emitted-cell records, and one A1 field
   record for each visual frame;
 - eight B0 filterbank records and one B1 field record for each auditory update;
