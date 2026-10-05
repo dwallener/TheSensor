@@ -1733,6 +1733,8 @@ The two blocks describe the same sample times. Channel-major ordering allows one
 physical resonator bank to process the left block, retain compact per-band complex
 and level summaries, clear its state, and then process the right block. The sender
 therefore SHALL buffer a complete 256-byte stereo work unit before transmission.
+The implementation rationale and retained-state boundary are recorded in
+[`docs/auditory-tdm.md`](docs/auditory-tdm.md).
 
 The core MAY deassert `input_ready` after accepting a channel sample while its
 shared arithmetic engine updates all band states. The sender SHALL hold the

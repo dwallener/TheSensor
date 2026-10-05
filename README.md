@@ -18,6 +18,7 @@ The Sensor aims to do the same.
 - [Processing roadmap](PLAN.md) — staged local-to-global and multimodal extensions
 - [ASIC protocol and pinout](docs/info.md) — shared command-selected byte-stream interface
 - [Perception oscilloscope](sim/README.md) — synchronized framebuffer and stereo-stream integration viewer
+- [Auditory channel-major TDM](docs/auditory-tdm.md) — state reuse, protocol, and localization tradeoff
 
 ## Current implementation
 
