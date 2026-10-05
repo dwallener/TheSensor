@@ -1,4 +1,4 @@
-.PHONY: test test-rtl test-audio lint synth clean
+.PHONY: test test-rtl test-audio demo lint synth clean
 
 test: test-rtl test-audio
 
@@ -7,6 +7,9 @@ test-rtl:
 
 test-audio:
 	python3 -m pytest -q test/test_audio_model.py
+
+demo:
+	python3 sim/run_reference.py
 
 lint:
 	verilator --lint-only --Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL \

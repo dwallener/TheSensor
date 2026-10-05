@@ -3,13 +3,13 @@ import random
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge, Timer
 
-from model import COMMAND, process_tile
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from reference.visual_tile_model import COMMAND, process_tile  # noqa: E402
 
 from reference.audio_model import (  # noqa: E402
     CENTER_FREQUENCIES,

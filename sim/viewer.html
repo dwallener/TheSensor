@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The Sensor — Reference Replay</title>
+<style>
+  :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, monospace; }
+  body { margin: 0; background: #0a0d12; color: #dce7f4; }
+  header { padding: 16px 20px; border-bottom: 1px solid #273446; display:flex; gap:16px; align-items:center; }
+  main { display:grid; grid-template-columns: 300px 1fr; gap:18px; padding:18px; }
+  section { background:#111722; border:1px solid #273446; border-radius:10px; padding:14px; }
+  canvas { width:100%; image-rendering:pixelated; background:#080b10; }
+  #image { aspect-ratio:1; }
+  #visual, #audio { height:280px; }
+  input[type=range] { width:min(700px,60vw); }
+  .muted { color:#8191a7; }
+</style>
+<header>
+  <strong>The Sensor / reference replay</strong>
+  <input id="file" type="file" accept="application/json">
+  <button id="play">Play</button>
+  <input id="time" type="range" min="0" max="1" step="0.001" value="0">
+  <span id="clock">0.000 s</span>
+</header>
+<main>
+  <section><canvas id="image" width="256" height="256"></canvas><p class="muted">Buffered visual frame</p></section>
+  <div>
+    <section><canvas id="visual" width="1000" height="280"></canvas><p class="muted">A1 visual-field vector</p></section>
+    <section style="margin-top:18px"><canvas id="audio" width="1000" height="280"></canvas><p class="muted">B1 auditory-field vector</p></section>
+  </div>
+</main>
+<script>
+const visualNames=['luma','contrast','edge H','edge /','edge V','edge \\','change','move X','move Y','confidence','expansion','rotation','saliency X','saliency Y','activity','consistency'];
+const audioNames=['energy','low','mid','high','centroid','spread','onset','offset','peak band','impulse','modulation','level','phase','lateral move','confidence','novelty'];
+const visualSigned=new Set([6,7,8,10,11,12,13]);
+const audioSigned=new Set([11,12,13]);
+let data=null, playing=false, started=0, startValue=0;
+const $=id=>document.getElementById(id);
+function signed(v){return v>127?v-256:v}
+function nearest(items,t){let best=null,d=Infinity; for(const item of items){const n=Math.abs(item.time-t);if(n<d){best=item;d=n}} return best}
+function bars(canvas,names,values,signedSet){
+  const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height;c.clearRect(0,0,w,h);
+  const col=w/names.length,zero=h*.48;c.strokeStyle='#34445a';c.beginPath();c.moveTo(0,zero);c.lineTo(w,zero);c.stroke();
+  names.forEach((name,i)=>{let v=signedSet.has(i)?signed(values[i]):values[i];let mag=signedSet.has(i)?Math.min(1,Math.abs(v)/128):v/255;let y=signedSet.has(i)&&v<0?zero:zero-mag*(zero-24);let bh=mag*(zero-24);if(signedSet.has(i)&&v<0)y=zero;
+    c.fillStyle=v<0?'#ff6e7a':'#55d6be';c.fillRect(i*col+5,y,col-10,bh);c.save();c.translate(i*col+col*.55,h-4);c.rotate(-Math.PI/3);c.fillStyle='#aab8ca';c.font='12px monospace';c.fillText(name,0,0);c.restore();
+  });
+}
+function render(t){if(!data)return;$('clock').textContent=t.toFixed(3)+' s';const v=nearest(data.visual,t),a=nearest(data.audio,t);
+  if(v){const p=v.preview,size=data.preview_size,c=$('image').getContext('2d'),img=c.createImageData(size,size);for(let i=0;i<p.length;i++){img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=p[i];img.data[i*4+3]=255}const tmp=document.createElement('canvas');tmp.width=tmp.height=size;tmp.getContext('2d').putImageData(img,0,0);c.imageSmoothingEnabled=false;c.drawImage(tmp,0,0,256,256);bars($('visual'),visualNames,v.field.slice(1,17),visualSigned)}
+  if(a)bars($('audio'),audioNames,a.field.slice(1,17),audioSigned);
+}
+$('file').onchange=async e=>{data=JSON.parse(await e.target.files[0].text());$('time').max=data.duration;$('time').value=0;render(0)};
+$('time').oninput=e=>render(Number(e.target.value));
+$('play').onclick=()=>{if(!data)return;playing=!playing;$('play').textContent=playing?'Pause':'Play';started=performance.now();startValue=Number($('time').value);if(playing)requestAnimationFrame(tick)};
+function tick(now){if(!playing)return;let t=startValue+(now-started)/1000;if(t>data.duration)t=0,started=now,startValue=0;$('time').value=t;render(t);requestAnimationFrame(tick)}
+</script>

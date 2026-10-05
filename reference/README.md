@@ -1,5 +1,6 @@
 # Reference models
 
+`visual_tile_model.py` is the bit-accurate oracle for `MONO_TEMPORAL_V0`.
 `audio_model.py` defines the floating-point and ASIC fixed-point versions of
 `STEREO_FILTERBANK_V0`. `visual_field_model.py` is the bit-accurate oracle for
 `VISUAL_FIELD_V0`, which pools 64 local tile records into one field-level reflex
