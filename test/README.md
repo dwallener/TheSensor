@@ -4,7 +4,8 @@ The cocotb testbench streams complete current/previous tiles through the ASIC RT
 and checks every response byte against the bit-accurate Python model. It covers
 flat fields, oriented patterns, positive and negative temporal change, motion,
 stereo auditory features, visual-field translation/expansion/rotation/saliency,
-random inputs, output backpressure, and invalid commands.
+auditory temporal integration and baseline novelty, random inputs, output
+backpressure, and invalid commands.
 
 ## Setting up
 

@@ -1912,3 +1912,65 @@ The kernel SHALL:
 
 The next planned processing stages are normative only after their byte contracts
 are frozen. Their current order and intent are recorded in `PLAN.md`.
+
+---
+
+# Part VI — Auditory temporal-field integration
+
+## 58. Auditory field kernel
+
+`AUDITORY_FIELD_V0` SHALL be selected by command `0xB1`. It consumes eight
+oldest-to-newest `STEREO_FILTERBANK_V0` time slots. For each slot the host SHALL
+omit marker `0x5B`, send its sixteen eight-byte band records, then send its status
+byte. The total payload is `8 × (128 + 1) = 1,032` bytes.
+
+The response SHALL be exactly 18 bytes: marker `0x5D`, sixteen features in the
+order below, and the bitwise OR of all input status bytes.
+
+| Index | Feature | Type | Definition |
+| ---: | --- | --- | --- |
+| 0 | total energy | `uint8` | mean mono energy over 128 cells |
+| 1 | low energy | `uint8` | mean of bands 0–3 |
+| 2 | middle energy | `uint8` | mean of bands 4–11 |
+| 3 | high energy | `uint8` | mean of bands 12–15 |
+| 4 | spectral centroid | `uint8` | energy-weighted band index, scaled 0–240 |
+| 5 | spectral spread | `uint8` | energy-weighted distance from bank centre |
+| 6 | onset activity | `uint8` | mean channel-4 onset strength |
+| 7 | offset activity | `uint8` | mean negative channel-3 energy delta magnitude |
+| 8 | strongest band | `uint8` | peak band index multiplied by 17 |
+| 9 | impulsiveness | `uint8` | peak-slot energy above mean-slot energy |
+| 10 | modulation | `uint8` | adjacent-slot absolute energy change |
+| 11 | level evidence | `int8` | confidence-weighted level difference |
+| 12 | phase evidence | `int8` | confidence-weighted phase lead |
+| 13 | lateral movement | `int8` | late-half minus early-half mean level evidence |
+| 14 | stereo confidence | `uint8` | mean channel-7 confidence |
+| 15 | novelty | `uint8` | mean distance from retained per-band baseline |
+
+Centroid, spread, and confidence-weighted spatial values SHALL use the frozen
+power-of-two denominator approximation in the bit-accurate reference model. The
+strongest band SHALL be the first band with maximum eight-slot mono-energy sum.
+
+The kernel SHALL retain sixteen unsigned baseline bytes across `0xB1` commands.
+For current eight-slot band mean `x` and baseline `b`, it SHALL update:
+
+```text
+b_next = b + ((x - b) >>> 3)
+```
+
+Novelty SHALL be measured against `b` before this update. Reset SHALL clear all
+baselines. This retained state is intentional: unlike the self-contained `A0`,
+`A1`, and `B0` work units, `B1` implements a slow contextual connection.
+
+## 59. Auditory field acceptance tests
+
+The kernel SHALL:
+
+1. produce silence and zero confidence for an all-zero field;
+2. locate a persistent single-band source;
+3. distinguish an impulsive event from a steady source;
+4. report onset and offset with the correct signs;
+5. report signed early-to-late lateral movement;
+6. reduce novelty as a stationary spectrum is incorporated into its baseline;
+7. match the stateful bit-accurate model for randomized records and backpressure;
+8. propagate every input status bit;
+9. leave `0xA0`, `0xA1`, and `0xB0` behavior bit-identical.

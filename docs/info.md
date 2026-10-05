@@ -66,6 +66,27 @@ The fixed ERB-spaced bands run from 125 Hz through 8 kHz. Status bit 0 reports a
 exact full-scale input sample, bit 2 reports internal state saturation, and bit 3
 reports a command/configuration error. Other status bits are reserved as zero.
 
+### Auditory-field command `B1`
+
+Send eight oldest-to-newest auditory slots. Each slot contains the 128 feature
+bytes after the `5B` marker in a `B0` response, followed by that response's status
+byte. The core returns 18 bytes:
+
+1. `5D` response marker
+2. total, low-band, mid-band, and high-band energy
+3. spectral centroid and spread
+4. onset and offset activity
+5. strongest frequency band
+6. impulsiveness and short-term modulation
+7. signed confidence-weighted level and phase evidence
+8. signed early-to-late lateral movement
+9. mean stereo confidence
+10. novelty against the retained slowly adapting sixteen-band baseline
+11. bitwise OR of all eight input status bytes
+
+The retained baseline resets only with `rst_n`, not between `B1` commands. This is
+the first implemented context path whose output depends on earlier work units.
+
 ## How to test
 
 Set `ena` high. Present the input byte on `ui_in`, assert `uio_in[0]`, and wait for
@@ -82,5 +103,5 @@ A controller or FPGA must buffer image-sensor frames, divide them into 16x16 til
 and stream current/previous tile pairs to the ASIC. It can feed the returned tile
 records to `A1` for field-level evidence. It must likewise acquire and
 synchronize the microphone ADC streams, construct overlapping 256-sample windows,
-and assemble eight returned slots into each auditory frame. Sensor acquisition and
-raw buffering are intentionally outside this TinyTapeout block.
+and assemble eight returned slots for `B1`. Sensor acquisition and raw buffering
+are intentionally outside this TinyTapeout block.

@@ -56,12 +56,52 @@ Acceptance gates:
 
 Implement `AUDITORY_FIELD_V0` behind command `0xB1`. It consumes eight consecutive
 16 × 8 auditory slots and emits a compact summary of broadband and low/mid/high
-energy, spectral centroid and width, onset/offset, persistence, modulation,
+energy, spectral centroid and spread, onset/offset, impulsiveness, modulation,
 confidence-weighted spatial evidence, apparent lateral movement, and novelty.
+
+Each input slot contains the 128 feature bytes plus status emitted by one `0xB0`
+work unit; the `0x5B` marker is omitted. The proposed 16-byte output is:
+
+1. total mean energy;
+2. low-band energy, bands 0–3;
+3. mid-band energy, bands 4–11;
+4. high-band energy, bands 12–15;
+5. energy-weighted spectral centroid;
+6. energy-weighted spectral spread about the bank centre;
+7. onset activity;
+8. offset activity;
+9. strongest band;
+10. impulsiveness;
+11. short-term modulation;
+12. confidence-weighted level difference;
+13. confidence-weighted phase lead;
+14. early-to-late lateral movement;
+15. mean stereo confidence;
+16. novelty against a slowly adapting per-band baseline.
 
 The first version should operate on `STEREO_FILTERBANK_V0` records rather than add
 more PCM-rate arithmetic. This tests the same local-to-global hierarchy as the
 visual field integrator.
+
+## Simulation milestone — watch the magic wiggle
+
+Build a deterministic end-to-end simulation harness with two synchronized input
+paths:
+
+- an image framebuffer supplying current/previous monochrome frames, tiled through
+  `A0` and pooled through `A1`;
+- a stereo PCM stream windowed through `B0` and pooled through `B1`.
+
+The harness shall display a shared timeline with raw or downsampled image/audio
+context, local feature records, visual translation/expansion/rotation/saliency,
+auditory spectrum/onset/spatial movement/novelty, command occupancy, and status.
+Recorded replay must be deterministic. Synthetic scenes should include moving and
+looming visual targets, tones, clicks, amplitude modulation, and laterally moving
+sound so every major channel has an obvious expected motion.
+
+This simulator is the primary integration target before direct sensor interfaces.
+It should support both the fast Python reference models and byte-for-byte RTL
+replay, allowing the same dashboard to compare expected and implemented behavior.
 
 ## Stage 3 — Common reflex record
 

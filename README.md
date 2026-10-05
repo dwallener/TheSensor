@@ -21,14 +21,15 @@ The Sensor aims to do the same.
 ## Current implementation
 
 The current synthesizable target is `MULTISENSE_V0`, a TinyTapeout/IHP CMOS5L
-design containing three command-selected kernels. `MONO_TEMPORAL_V0` turns current
+design containing four command-selected kernels. `MONO_TEMPORAL_V0` turns current
 and previous 16x16 monochrome tiles into ten visual features.
 `STEREO_FILTERBANK_V0` turns a 256-sample stereo PCM window into sixteen
 frequency-band records containing energy, onset, level, phase-lead, and stereo
 confidence evidence. `VISUAL_FIELD_V0` pools 64 visual tile records into
 frame-level translation, expansion, rotation, saliency, activity, and directional
 consistency evidence. The kernels share the same byte bus and run one work unit at
-a time.
+a time. `AUDITORY_FIELD_V0` pools eight auditory slots into spectral, onset,
+modulation, spatial-movement, confidence, and slowly adapting novelty evidence.
 
 A host assembles 64 visual tile results into an 8x8x16 visual frame, or eight
 auditory time slots into an 8x16x8 auditory frame. Each canonical dense frame has

@@ -22,6 +22,10 @@ from reference.visual_field_model import (  # noqa: E402
     COMMAND as FIELD_COMMAND,
     process_visual_field,
 )
+from reference.auditory_field_model import (  # noqa: E402
+    AuditoryFieldModel,
+    COMMAND as AUDIO_FIELD_COMMAND,
+)
 
 
 def _pin(value, bit):
@@ -97,6 +101,16 @@ async def process_field(dut, records, stall=False):
     for record in records:
         for value in record:
             await send_byte(dut, value)
+    return await receive_response(dut, length=18, stall=stall)
+
+
+async def process_audio_field(dut, slots, stall=False):
+    await send_byte(dut, AUDIO_FIELD_COMMAND)
+    for bands, status in slots:
+        for record in bands:
+            for value in record:
+                await send_byte(dut, value)
+        await send_byte(dut, status)
     return await receive_response(dut, length=18, stall=stall)
 
 
@@ -244,3 +258,49 @@ async def test_visual_field(dut):
         assert actual == expected, (
             f"visual field case {index}: actual={actual}, expected={expected}"
         )
+
+
+@cocotb.test()
+async def test_auditory_field(dut):
+    """Integrate auditory slots across frequency, time, and stereo evidence."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+    await reset(dut)
+    model = AuditoryFieldModel()
+
+    def blank_slots():
+        return [([[0] * 8 for _ in range(16)], 0) for _ in range(8)]
+
+    silence = blank_slots()
+
+    steady = blank_slots()
+    for slot, (bands, _) in enumerate(steady):
+        bands[5] = [100, 100, 100, 0, 80 if slot == 0 else 0, 20, 10, 200]
+
+    transient = blank_slots()
+    transient[0][0][10] = [200, 200, 200, 127, 200, -25 & 0xFF, -12 & 0xFF, 180]
+    transient[1][0][10] = [0, 0, 0, -100 & 0xFF, 0, -10 & 0xFF, -5 & 0xFF, 80]
+    transient[3] = (transient[3][0], 0x04)
+
+    moving = blank_slots()
+    for slot, (bands, _) in enumerate(moving):
+        level = -36 + slot * 12
+        bands[7] = [90, 90, 90, 0, 0, level & 0xFF, (level // 2) & 0xFF, 190]
+
+    rng = random.Random(0xB1F13D)
+    randomized = []
+    for slot in range(8):
+        bands = [[rng.randrange(256) for _ in range(8)] for _ in range(16)]
+        randomized.append((bands, 1 << (slot & 3)))
+
+    cases = [silence, steady, steady, transient, moving, randomized]
+    novelty_outputs = []
+    for index, slots in enumerate(cases):
+        actual = await process_audio_field(dut, slots, stall=(index & 1) == 1)
+        expected = model.process(slots)
+        assert actual == expected, (
+            f"auditory field case {index}: actual={actual}, expected={expected}"
+        )
+        novelty_outputs.append(actual[16])
+    assert novelty_outputs[2] < novelty_outputs[1], (
+        "a repeated stationary spectrum must become less novel"
+    )

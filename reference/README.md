@@ -4,6 +4,9 @@
 `STEREO_FILTERBANK_V0`. `visual_field_model.py` is the bit-accurate oracle for
 `VISUAL_FIELD_V0`, which pools 64 local tile records into one field-level reflex
 vector.
+`auditory_field_model.py` is a stateful bit-accurate oracle for
+`AUDITORY_FIELD_V0`; its sixteen retained baseline bytes model the RTL's slowly
+adapting per-band acoustic context.
 
 The fixed model uses:
 
