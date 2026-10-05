@@ -11,7 +11,7 @@
     .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.brand{font-weight:750;letter-spacing:.02em;margin-right:10px}
     button,select,input::file-selector-button{background:#182334;color:var(--text);border:1px solid #344761;border-radius:6px;padding:7px 10px}
     button:hover,input::file-selector-button:hover{border-color:var(--cyan)} input[type=range]{accent-color:var(--cyan)} #time{flex:1;min-width:220px}
-    .status{display:flex;gap:14px;margin-top:9px;color:var(--muted);font:12px ui-monospace,monospace}.status strong{color:var(--text)}
+    .status{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;color:var(--muted);font:12px ui-monospace,monospace}.status strong{color:var(--text)}
     main{padding:16px;max-width:1600px;margin:auto}.sensor-row{display:grid;grid-template-columns:minmax(250px,.8fr) minmax(300px,1fr) minmax(440px,1.55fr);gap:14px;margin-bottom:14px}
     .panel{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 8px 24px #0005}
     h2{font-size:14px;margin:0 0 10px;letter-spacing:.08em;text-transform:uppercase;color:#b9c8da}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
@@ -32,7 +32,7 @@
       <select id="speed"><option>.25×</option><option>.5×</option><option selected>1×</option><option>2×</option><option>4×</option></select>
       <input id="time" type="range" min="0" max="1" step="0.001" value="0"><strong id="clock">0.000 s</strong>
     </div>
-    <div class="status"><span>schema <strong id="schema">no replay loaded</strong></span><span>visual <strong id="visualTime">—</strong></span><span>audio <strong id="audioTime">—</strong></span><span>comparison <strong id="compareState">reference only</strong></span></div>
+    <div class="status"><span>schema <strong id="schema">no replay loaded</strong></span><span>source <strong id="source">—</strong></span><span>visual <strong id="visualTime">—</strong></span><span>audio <strong id="audioTime">—</strong></span><span>comparison <strong id="compareState">reference only</strong></span></div>
   </header>
   <main>
     <div id="drop">Choose or drop <code>demo_data.json</code> to begin synchronized replay.</div>

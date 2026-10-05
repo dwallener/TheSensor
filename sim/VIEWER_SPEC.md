@@ -53,7 +53,7 @@ independent of the producer.
 ## Planned increments
 
 1. Synthetic reference replay and synchronized viewer — implemented.
-2. Monochrome framebuffer-sequence and stereo-WAV input adapters.
+2. Synchronized media adapter for monochrome framebuffers and stereo PCM — implemented.
 3. RTL byte-stream replay with reference-versus-RTL differences.
 4. Event annotations and end-to-end latency overlays.
 5. Session export as deterministic regression fixtures.

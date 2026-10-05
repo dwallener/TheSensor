@@ -28,3 +28,20 @@ The next input adapters should read recorded monochrome framebuffers and stereo
 WAV without changing `process_frame()` or `process_audio_stream()`. A later RTL
 mode will replace each reference-model call with byte-stream replay while keeping
 the JSON schema and viewer unchanged.
+
+## Recorded media
+
+Keep source media under the ignored `sim/input/` directory. Convert a chosen
+segment with FFmpeg plus the bit-accurate reference models:
+
+```sh
+python3 sim/run_media.py sim/input/example.mp4 \
+  --start 12 --duration 8 --output sim/replays/example.json
+```
+
+Omit `--start` to choose a deterministic pseudo-random segment; `--seed` changes
+that choice. The default centre-crops widescreen video to the square sensor field.
+Use `--fit letterbox` when retaining the complete horizontal field of view matters
+more than using the full visual array. Video is converted to 128 × 128 grayscale
+at 24 frames/s and audio to 48 kHz signed stereo PCM. Source name, exact interval,
+fit policy, and probe metadata are embedded in every replay.

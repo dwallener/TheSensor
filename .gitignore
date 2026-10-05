@@ -13,3 +13,5 @@ __pycache__/
 test/results.xml
 test/gate_level_netlist.v
 sim/demo_data.json
+sim/input/
+sim/replays/

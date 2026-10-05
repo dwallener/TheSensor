@@ -146,6 +146,7 @@ def generate(duration: float) -> dict[str, object]:
         "duration": duration,
         "frame_size": FRAME_SIZE,
         "preview_size": 32,
+        "frame_rate": FRAME_RATE,
         "sample_rate": SAMPLE_RATE,
         "visual": visual,
         "audio": audio,
