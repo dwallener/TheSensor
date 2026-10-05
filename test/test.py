@@ -2,7 +2,7 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ReadOnly, RisingEdge, Timer
+from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge, Timer
 
 from model import COMMAND, process_tile
 
@@ -18,6 +18,7 @@ async def reset(dut):
     dut.rst_n.value = 0
     for _ in range(3):
         await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
     dut.rst_n.value = 1
     await RisingEdge(dut.clk)
 
@@ -111,3 +112,16 @@ async def test_feature_kernel(dut):
     await RisingEdge(dut.clk)
     await ReadOnly()
     assert not _pin(dut.uio_out.value, 5), "valid command must clear error"
+
+
+@cocotb.test()
+async def test_full_scale_temporal_step_from_reset(dut):
+    """Isolate the full-scale temporal step from all preceding work units."""
+    cocotb.start_soon(Clock(dut.clk, 20, unit="ns").start())
+    await reset(dut)
+
+    current = [255] * 256
+    previous = [0] * 256
+    actual = await process(dut, current, previous)
+    expected = process_tile(current, previous)
+    assert actual == expected, f"full-scale step: {actual} != {expected}"

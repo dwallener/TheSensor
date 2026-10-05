@@ -60,17 +60,27 @@ module mono_temporal_core (
   wire [3:0] previous_up = previous_line[x];
   wire [7:0] current_up_right = current_line[x + 4'd1];
 
-  wire [7:0] product_h_forward = previous_left * current_sample[7:4];
-  wire [7:0] product_h_reverse = current_left[7:4] * input_data[7:4];
-  wire [7:0] product_v_forward = previous_up * current_sample[7:4];
-  wire [7:0] product_v_reverse = current_up[7:4] * input_data[7:4];
-  wire signed [8:0] horizontal_correlation =
-      $signed({1'b0, product_h_forward}) - $signed({1'b0, product_h_reverse});
-  wire signed [8:0] vertical_correlation =
-      $signed({1'b0, product_v_forward}) - $signed({1'b0, product_v_reverse});
+  wire [3:0] current_nibble = current_sample[7:4];
+  wire [3:0] previous_nibble = input_data[7:4];
+  wire [7:0] product_h_forward =
+      ((previous_left == 0) || (current_nibble == 0))
+      ? 8'd0 : previous_left * current_nibble;
+  wire [7:0] product_h_reverse =
+      ((current_left[7:4] == 0) || (previous_nibble == 0))
+      ? 8'd0 : current_left[7:4] * previous_nibble;
+  wire [7:0] product_v_forward =
+      ((previous_up == 0) || (current_nibble == 0))
+      ? 8'd0 : previous_up * current_nibble;
+  wire [7:0] product_v_reverse =
+      ((current_up[7:4] == 0) || (previous_nibble == 0))
+      ? 8'd0 : current_up[7:4] * previous_nibble;
+  wire signed [9:0] horizontal_correlation =
+      $signed({2'b00, product_h_forward}) - $signed({2'b00, product_h_reverse});
+  wire signed [9:0] vertical_correlation =
+      $signed({2'b00, product_v_forward}) - $signed({2'b00, product_v_reverse});
   wire [19:0] confidence_increment =
-      ((x != 0) ? {11'd0, abs_signed9(horizontal_correlation)} : 20'd0)
-      + ((y != 0) ? {11'd0, abs_signed9(vertical_correlation)} : 20'd0);
+      ((x != 0) ? {10'd0, abs_signed10(horizontal_correlation)} : 20'd0)
+      + ((y != 0) ? {10'd0, abs_signed10(vertical_correlation)} : 20'd0);
 
   wire signed [17:0] temporal_average = temporal_sum >>> 8;
   wire signed [19:0] motion_x_average = motion_x_sum >>> 8;
@@ -87,10 +97,10 @@ module mono_temporal_core (
     end
   endfunction
 
-  function [8:0] abs_signed9;
-    input signed [8:0] value;
+  function [9:0] abs_signed10;
+    input signed [9:0] value;
     begin
-      abs_signed9 = value[8] ? -value : value;
+      abs_signed10 = value[9] ? -value : value;
     end
   endfunction
 
@@ -199,14 +209,14 @@ module mono_temporal_core (
                 edge_vertical_sum <= edge_vertical_sum
                     + {10'd0, abs_diff8(current_sample, current_left)};
                 motion_x_sum <= motion_x_sum
-                    + {{11{horizontal_correlation[8]}}, horizontal_correlation};
+                    + {{10{horizontal_correlation[9]}}, horizontal_correlation};
               end
 
               if (y != 0) begin
                 edge_horizontal_sum <= edge_horizontal_sum
                     + {10'd0, abs_diff8(current_sample, current_up)};
                 motion_y_sum <= motion_y_sum
-                    + {{11{vertical_correlation[8]}}, vertical_correlation};
+                    + {{10{vertical_correlation[9]}}, vertical_correlation};
                 if (x != 0)
                   edge_diag_rising_sum <= edge_diag_rising_sum
                       + {10'd0, abs_diff8(current_sample, current_up_left)};
