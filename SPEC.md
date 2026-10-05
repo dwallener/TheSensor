@@ -1312,14 +1312,19 @@ The initial synthesis profile is named `MONO_TEMPORAL_V0`. Its source mask ident
 
 ### 43.1 Input work unit
 
-Default input:
+The architecture permits halo-expanded work units, but the frozen
+`MONO_TEMPORAL_V0` transport uses:
 
-- one 16 × 16 active processing tile with a one-pixel halo;
+- one 16 × 16 active processing tile without a transmitted halo;
 - current monochrome patch from one eye;
 - previous monochrome patch from the same eye;
-- tile coordinate;
-- frame interval code;
-- validity and configuration flags.
+- implicit raster order within the tile.
+
+The host retains tile coordinate, frame interval, validity, and configuration
+metadata. Boundary comparisons that require a pixel outside the active tile are
+omitted. This makes every work unit self-contained and bounds the silicon line
+storage; the off-chip pooling stage accounts for the slightly smaller sample count
+at fine-tile boundaries.
 
 This is 648 pixel bytes for two 18 × 18 patches plus a small header. At VGA, there are 40 × 30 = 1,200 non-overlapping 16 × 16 processing tiles. At 30 frames/s, naïve halo-expanded current/previous transport is approximately 23.3 MB/s before metadata and handshakes. This is plausible on a 50 MHz byte interface but does not provide unlimited margin. The external scheduler SHOULD therefore support one or more of:
 
@@ -1367,7 +1372,30 @@ The intended mapping is:
 - `rst_n`: complete deterministic reset;
 - `ena`: standard TinyTapeout project enable.
 
-The exact `uio` allocation SHALL be frozen only after a cycle-accurate transport model demonstrates that input and output can proceed without ambiguous ownership or deadlock.
+The `MONO_TEMPORAL_V0` allocation is frozen as follows:
+
+| Pin | Direction | Meaning |
+| --- | --- | --- |
+| `uio[0]` | input | `input_valid` |
+| `uio[1]` | input | `output_ready` |
+| `uio[2]` | output | `input_ready` |
+| `uio[3]` | output | `output_valid` |
+| `uio[4]` | output | `busy` |
+| `uio[5]` | output | sticky command `error` |
+| `uio[6]` | output | `output_first` |
+| `uio[7]` | output | `output_last` |
+
+A work unit is command byte `0xA0`, followed by 256 raster-order repetitions of
+`{current_pixel, previous_pixel}`. The response is marker `0x5A`, channels 0
+through 9 in registry order, and one status byte. Status bits 0 through 3 report
+saturation of temporal change, horizontal motion, vertical motion, and motion
+confidence. Signed outputs use two's-complement.
+
+With no stalls, one work unit takes 526 clocks including command, pixel pairs, one
+finalization clock, and the 12-byte response. At 50 MHz, 1,200 VGA tiles take
+approximately 12.6 ms, providing margin at 30 fps and a narrow but usable path to
+60 fps. The separate input and output byte buses are logically full duplex, but V0
+deliberately accepts a new command only after its response has been consumed.
 
 ## 44. Bandwidth examples
 

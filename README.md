@@ -15,6 +15,24 @@ The Sensor aims to do the same.
 ## Documentation
 
 - [Engineering specification](SPEC.md) — normative requirements and current implementation decisions
+- [ASIC protocol and pinout](docs/info.md) — `MONO_TEMPORAL_V0` byte-stream interface
+
+## Current implementation
+
+The first synthesizable target is `MONO_TEMPORAL_V0`: a TinyTapeout/IHP CMOS5L
+streaming kernel that turns current and previous 16x16 monochrome tiles into ten
+visual features. A host assembles 64 tile results into the first ten channels of
+the specified 8x8x16 (1024-byte) visual frame.
+
+The RTL is Verilog 2005. With Icarus Verilog, Verilator, Yosys, and the Python
+packages in `test/requirements.txt` installed (activate `.venv` first if using the
+repository-local environment):
+
+```sh
+make test
+make lint
+make synth
+```
 
 ## The problem
 
