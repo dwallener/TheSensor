@@ -12,7 +12,8 @@ dashboard.
 
 ### Visual path
 
-- The current 256 x 256 buffered image crop with its 8 x 8 emitted-cell grid.
+- The current 256 x 256 buffered image, formed by aspect-preserving vertical
+  scaling followed by a central square crop, with its 8 x 8 emitted-cell grid.
 - A selectable 16 x 16 fine A0 tile map and 8 x 8 pooled emitted-cell map.
 - Stable replay-wide 99th-percentile display gain for weak natural-image
   responses, with a raw-byte-scale switch and unmodified numeric labels.

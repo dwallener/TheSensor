@@ -59,7 +59,12 @@ def decode_frames(
     frame_rate: int,
     fit: str,
 ) -> list[list[int]]:
-    if fit == "native-crop":
+    if fit == "vertical-crop":
+        geometry = (
+            f"scale=-1:{FRAME_SIZE},"
+            f"crop={FRAME_SIZE}:{FRAME_SIZE}:(iw-{FRAME_SIZE})/2:0,setsar=1"
+        )
+    elif fit == "native-crop":
         geometry = f"crop={FRAME_SIZE}:{FRAME_SIZE}:(iw-{FRAME_SIZE})/2:(ih-{FRAME_SIZE})/2"
     else:
         geometry = (
@@ -151,7 +156,11 @@ def main() -> None:
     parser.add_argument("--duration", type=float, default=8.0)
     parser.add_argument("--seed", type=int, default=20261005)
     parser.add_argument("--frame-rate", type=int, default=24)
-    parser.add_argument("--fit", choices=("native-crop", "letterbox"), default="native-crop")
+    parser.add_argument(
+        "--fit",
+        choices=("vertical-crop", "native-crop", "letterbox"),
+        default="vertical-crop",
+    )
     args = parser.parse_args()
 
     if not args.input.is_file():

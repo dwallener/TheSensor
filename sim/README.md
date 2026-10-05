@@ -40,10 +40,12 @@ python3 sim/run_media.py sim/input/example.mp4 \
 ```
 
 Omit `--start` to choose a deterministic pseudo-random segment; `--seed` changes
-that choice. The default takes a native-resolution 256 × 256 centre crop: it does
-not rescale or geometrically distort the source. `--fit letterbox` is an explicit
-diagnostic alternative that rescales the complete field of view. The 256 × 256
-crop becomes a 16 × 16 raster of fine A0 tiles, which is pooled 2 × 2 into the
-canonical 8 × 8 emitted cells. Audio is converted to 48 kHz signed stereo PCM.
-Source name, exact interval, fit policy, and probe metadata are embedded in every
-replay.
+that choice. The default `vertical-crop` policy scales the source to 256 pixels
+high while preserving its aspect ratio, then takes the central 256 × 256 crop.
+This retains the complete vertical field, discards equal portions of the left and
+right sides, and introduces no geometric distortion. `--fit native-crop` retains
+one source pixel per sensor pixel; `--fit letterbox` retains the complete field of
+view. The resulting 256 × 256 frame becomes a 16 × 16 raster of fine A0 tiles,
+which is pooled 2 × 2 into the canonical 8 × 8 emitted cells. Audio is converted
+to 48 kHz signed stereo PCM. Source name, exact interval, fit policy, and probe
+metadata are embedded in every replay.
