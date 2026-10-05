@@ -40,8 +40,10 @@ python3 sim/run_media.py sim/input/example.mp4 \
 ```
 
 Omit `--start` to choose a deterministic pseudo-random segment; `--seed` changes
-that choice. The default centre-crops widescreen video to the square sensor field.
-Use `--fit letterbox` when retaining the complete horizontal field of view matters
-more than using the full visual array. Video is converted to 128 × 128 grayscale
-at 24 frames/s and audio to 48 kHz signed stereo PCM. Source name, exact interval,
-fit policy, and probe metadata are embedded in every replay.
+that choice. The default takes a native-resolution 256 × 256 centre crop: it does
+not rescale or geometrically distort the source. `--fit letterbox` is an explicit
+diagnostic alternative that rescales the complete field of view. The 256 × 256
+crop becomes a 16 × 16 raster of fine A0 tiles, which is pooled 2 × 2 into the
+canonical 8 × 8 emitted cells. Audio is converted to 48 kHz signed stereo PCM.
+Source name, exact interval, fit policy, and probe metadata are embedded in every
+replay.

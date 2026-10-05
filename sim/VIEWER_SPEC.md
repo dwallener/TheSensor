@@ -12,8 +12,8 @@ dashboard.
 
 ### Visual path
 
-- The current buffered image frame with its 8 x 8 processing grid.
-- A0 local motion vectors and a selectable local feature heatmap.
+- The current 256 x 256 buffered image crop with its 8 x 8 emitted-cell grid.
+- A selectable 16 x 16 fine A0 tile map and 8 x 8 pooled emitted-cell map.
 - Stable replay-wide 99th-percentile display gain for weak natural-image
   responses, with a raw-byte-scale switch and unmodified numeric labels.
 - A1 translation, expansion, rotation, saliency, activity, confidence, and
@@ -43,7 +43,8 @@ dashboard.
 
 - metadata describing the replay and sample timing;
 - downsampled image and waveform previews for display;
-- 64 A0 tile records and one A1 field record for each visual frame;
+- 256 fine A0 tile records, 64 pooled emitted-cell records, and one A1 field
+  record for each visual frame;
 - eight B0 filterbank records and one B1 field record for each auditory update;
 - an optional `rtl_field` beside a reference field record.
 

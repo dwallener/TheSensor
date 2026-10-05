@@ -22,8 +22,11 @@ from reference.auditory_field_model import AuditoryFieldModel  # noqa: E402
 from reference.visual_field_model import process_visual_field  # noqa: E402
 from reference.visual_tile_model import TILE_SIZE, process_tile  # noqa: E402
 
-FRAME_SIZE = 128
+FRAME_SIZE = 256
 FRAME_RATE = 30
+TILE_GRID = FRAME_SIZE // TILE_SIZE
+CELL_GRID = 8
+POOL_SIZE = TILE_GRID // CELL_GRID
 
 
 def _preview(frame: list[int], size: int = 32) -> list[int]:
@@ -35,14 +38,42 @@ def _preview(frame: list[int], size: int = 32) -> list[int]:
     ]
 
 
-def process_frame(current: list[int], previous: list[int]) -> tuple[list[list[int]], list[int]]:
-    """Run one 128x128 framebuffer pair through A0 tiles and A1 pooling."""
+def _pool_visual_tiles(records: list[list[int]]) -> list[list[int]]:
+    """Pool a 16x16 raster of A0 records into the canonical 8x8 cells."""
+    if len(records) != TILE_GRID * TILE_GRID:
+        raise ValueError(f"expected {TILE_GRID * TILE_GRID} fine tile records")
+    signed_channels = {6, 7, 8}
+    cells = []
+    for cell_y in range(CELL_GRID):
+        for cell_x in range(CELL_GRID):
+            members = [
+                records[(cell_y * POOL_SIZE + dy) * TILE_GRID + cell_x * POOL_SIZE + dx]
+                for dy in range(POOL_SIZE)
+                for dx in range(POOL_SIZE)
+            ]
+            cell = []
+            for channel in range(10):
+                values = [
+                    (record[channel] - 256 if record[channel] & 0x80 else record[channel])
+                    if channel in signed_channels else record[channel]
+                    for record in members
+                ]
+                cell.append((sum(values) // len(values)) & 0xFF)
+            cell.append(members[0][10] | members[1][10] | members[2][10] | members[3][10])
+            cells.append(cell)
+    return cells
+
+
+def process_frame(
+    current: list[int], previous: list[int]
+) -> tuple[list[list[int]], list[list[int]], list[int]]:
+    """Run one 256x256 framebuffer pair through A0, 2x2 pooling, and A1."""
     expected = FRAME_SIZE * FRAME_SIZE
     if len(current) != expected or len(previous) != expected:
         raise ValueError(f"frames must contain exactly {expected} grayscale bytes")
     records = []
-    for tile_y in range(8):
-        for tile_x in range(8):
+    for tile_y in range(TILE_GRID):
+        for tile_x in range(TILE_GRID):
             now = []
             before = []
             origin_x = tile_x * TILE_SIZE
@@ -52,7 +83,8 @@ def process_frame(current: list[int], previous: list[int]) -> tuple[list[list[in
                 now.extend(current[start : start + TILE_SIZE])
                 before.extend(previous[start : start + TILE_SIZE])
             records.append(process_tile(now, before)[1:])
-    return records, process_visual_field(records)
+    cells = _pool_visual_tiles(records)
+    return records, cells, process_visual_field(cells)
 
 
 def process_audio_stream(left: list[int], right: list[int]) -> list[dict[str, object]]:
@@ -126,11 +158,12 @@ def generate(duration: float) -> dict[str, object]:
     frames = [synthetic_frame(index) for index in range(frame_count)]
     visual = []
     for index in range(1, frame_count):
-        records, field = process_frame(frames[index], frames[index - 1])
+        records, cells, field = process_frame(frames[index], frames[index - 1])
         visual.append({
             "time": index / FRAME_RATE,
             "preview": _preview(frames[index]),
             "tiles": records,
+            "cells": cells,
             "field": field,
         })
 
@@ -146,6 +179,8 @@ def generate(duration: float) -> dict[str, object]:
         "duration": duration,
         "frame_size": FRAME_SIZE,
         "preview_size": 32,
+        "tile_grid": TILE_GRID,
+        "cell_grid": CELL_GRID,
         "frame_rate": FRAME_RATE,
         "sample_rate": SAMPLE_RATE,
         "visual": visual,

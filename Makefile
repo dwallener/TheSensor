@@ -1,12 +1,12 @@
-.PHONY: test test-rtl test-audio demo lint synth clean
+.PHONY: test test-rtl test-reference demo lint synth clean
 
-test: test-rtl test-audio
+test: test-rtl test-reference
 
 test-rtl:
 	$(MAKE) -C test
 
-test-audio:
-	python3 -m pytest -q test/test_audio_model.py
+test-reference:
+	python3 -m pytest -q test/test_audio_model.py test/test_replay_model.py
 
 demo:
 	python3 sim/run_reference.py

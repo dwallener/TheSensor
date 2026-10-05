@@ -16,7 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from reference.audio_model import SAMPLE_RATE  # noqa: E402
-from sim.run_reference import FRAME_SIZE, _preview, process_audio_stream, process_frame  # noqa: E402
+from sim.run_reference import (  # noqa: E402
+    CELL_GRID,
+    FRAME_SIZE,
+    TILE_GRID,
+    _preview,
+    process_audio_stream,
+    process_frame,
+)
 
 
 def _run(command: list[str]) -> bytes:
@@ -52,11 +59,8 @@ def decode_frames(
     frame_rate: int,
     fit: str,
 ) -> list[list[int]]:
-    if fit == "crop":
-        geometry = (
-            f"scale={FRAME_SIZE}:{FRAME_SIZE}:force_original_aspect_ratio=increase,"
-            f"crop={FRAME_SIZE}:{FRAME_SIZE}"
-        )
+    if fit == "native-crop":
+        geometry = f"crop={FRAME_SIZE}:{FRAME_SIZE}:(iw-{FRAME_SIZE})/2:(ih-{FRAME_SIZE})/2"
     else:
         geometry = (
             f"scale={FRAME_SIZE}:{FRAME_SIZE}:force_original_aspect_ratio=decrease,"
@@ -100,11 +104,12 @@ def generate(
 
     visual = []
     for index in range(1, len(frames)):
-        records, field = process_frame(frames[index], frames[index - 1])
+        records, cells, field = process_frame(frames[index], frames[index - 1])
         visual.append({
             "time": index / frame_rate,
             "preview": _preview(frames[index]),
             "tiles": records,
+            "cells": cells,
             "field": field,
         })
 
@@ -121,6 +126,8 @@ def generate(
         "duration": actual_duration,
         "frame_size": FRAME_SIZE,
         "preview_size": 32,
+        "tile_grid": TILE_GRID,
+        "cell_grid": CELL_GRID,
         "frame_rate": frame_rate,
         "sample_rate": SAMPLE_RATE,
         "source": {
@@ -144,7 +151,7 @@ def main() -> None:
     parser.add_argument("--duration", type=float, default=8.0)
     parser.add_argument("--seed", type=int, default=20261005)
     parser.add_argument("--frame-rate", type=int, default=24)
-    parser.add_argument("--fit", choices=("crop", "letterbox"), default="crop")
+    parser.add_argument("--fit", choices=("native-crop", "letterbox"), default="native-crop")
     args = parser.parse_args()
 
     if not args.input.is_file():
