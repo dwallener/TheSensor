@@ -17,7 +17,7 @@ The Sensor aims to do the same.
 - [Engineering specification](SPEC.md) — normative requirements and current implementation decisions
 - [Processing roadmap](PLAN.md) — staged local-to-global and multimodal extensions
 - [ASIC protocol and pinout](docs/info.md) — shared command-selected byte-stream interface
-- [Multimodal reference replay](sim/README.md) — framebuffer and stereo-stream integration viewer
+- [Perception oscilloscope](sim/README.md) — synchronized framebuffer and stereo-stream integration viewer
 
 ## Current implementation
 

@@ -12,9 +12,17 @@ python3 sim/run_reference.py
 ```
 
 Open `sim/viewer.html`, choose the generated `sim/demo_data.json`, and press Play.
+The perception oscilloscope keeps both paths on one cursor and shows:
+
+- the buffered image, local A0 feature plane, motion field, and A1 reflex state;
+- the stereo waveform, selectable B0 cochlear plane, lateral evidence, and B1
+  contextual state;
+- status and saturation on a shared visual/audio timeline; and
+- exact reference-versus-RTL comparison when records include `rtl_field`.
+
 The synthetic scene contains a textured moving/looming target. The audio contains
 a swept, amplitude-modulated, laterally moving tone and a short opposed-polarity
-click.
+click. See [VIEWER_SPEC.md](VIEWER_SPEC.md) for the display and replay contract.
 
 The next input adapters should read recorded monochrome framebuffers and stereo
 WAV without changing `process_frame()` or `process_audio_stream()`. A later RTL

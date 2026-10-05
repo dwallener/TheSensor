@@ -1,54 +1,54 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>The Sensor — Reference Replay</title>
-<style>
-  :root { color-scheme: dark; font-family: ui-monospace, SFMono-Regular, monospace; }
-  body { margin: 0; background: #0a0d12; color: #dce7f4; }
-  header { padding: 16px 20px; border-bottom: 1px solid #273446; display:flex; gap:16px; align-items:center; }
-  main { display:grid; grid-template-columns: 300px 1fr; gap:18px; padding:18px; }
-  section { background:#111722; border:1px solid #273446; border-radius:10px; padding:14px; }
-  canvas { width:100%; image-rendering:pixelated; background:#080b10; }
-  #image { aspect-ratio:1; }
-  #visual, #audio { height:280px; }
-  input[type=range] { width:min(700px,60vw); }
-  .muted { color:#8191a7; }
-</style>
-<header>
-  <strong>The Sensor / reference replay</strong>
-  <input id="file" type="file" accept="application/json">
-  <button id="play">Play</button>
-  <input id="time" type="range" min="0" max="1" step="0.001" value="0">
-  <span id="clock">0.000 s</span>
-</header>
-<main>
-  <section><canvas id="image" width="256" height="256"></canvas><p class="muted">Buffered visual frame</p></section>
-  <div>
-    <section><canvas id="visual" width="1000" height="280"></canvas><p class="muted">A1 visual-field vector</p></section>
-    <section style="margin-top:18px"><canvas id="audio" width="1000" height="280"></canvas><p class="muted">B1 auditory-field vector</p></section>
-  </div>
-</main>
-<script>
-const visualNames=['luma','contrast','edge H','edge /','edge V','edge \\','change','move X','move Y','confidence','expansion','rotation','saliency X','saliency Y','activity','consistency'];
-const audioNames=['energy','low','mid','high','centroid','spread','onset','offset','peak band','impulse','modulation','level','phase','lateral move','confidence','novelty'];
-const visualSigned=new Set([6,7,8,10,11,12,13]);
-const audioSigned=new Set([11,12,13]);
-let data=null, playing=false, started=0, startValue=0;
-const $=id=>document.getElementById(id);
-function signed(v){return v>127?v-256:v}
-function nearest(items,t){let best=null,d=Infinity; for(const item of items){const n=Math.abs(item.time-t);if(n<d){best=item;d=n}} return best}
-function bars(canvas,names,values,signedSet){
-  const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height;c.clearRect(0,0,w,h);
-  const col=w/names.length,zero=h*.48;c.strokeStyle='#34445a';c.beginPath();c.moveTo(0,zero);c.lineTo(w,zero);c.stroke();
-  names.forEach((name,i)=>{let v=signedSet.has(i)?signed(values[i]):values[i];let mag=signedSet.has(i)?Math.min(1,Math.abs(v)/128):v/255;let y=signedSet.has(i)&&v<0?zero:zero-mag*(zero-24);let bh=mag*(zero-24);if(signedSet.has(i)&&v<0)y=zero;
-    c.fillStyle=v<0?'#ff6e7a':'#55d6be';c.fillRect(i*col+5,y,col-10,bh);c.save();c.translate(i*col+col*.55,h-4);c.rotate(-Math.PI/3);c.fillStyle='#aab8ca';c.font='12px monospace';c.fillText(name,0,0);c.restore();
-  });
-}
-function render(t){if(!data)return;$('clock').textContent=t.toFixed(3)+' s';const v=nearest(data.visual,t),a=nearest(data.audio,t);
-  if(v){const p=v.preview,size=data.preview_size,c=$('image').getContext('2d'),img=c.createImageData(size,size);for(let i=0;i<p.length;i++){img.data[i*4]=img.data[i*4+1]=img.data[i*4+2]=p[i];img.data[i*4+3]=255}const tmp=document.createElement('canvas');tmp.width=tmp.height=size;tmp.getContext('2d').putImageData(img,0,0);c.imageSmoothingEnabled=false;c.drawImage(tmp,0,0,256,256);bars($('visual'),visualNames,v.field.slice(1,17),visualSigned)}
-  if(a)bars($('audio'),audioNames,a.field.slice(1,17),audioSigned);
-}
-$('file').onchange=async e=>{data=JSON.parse(await e.target.files[0].text());$('time').max=data.duration;$('time').value=0;render(0)};
-$('time').oninput=e=>render(Number(e.target.value));
-$('play').onclick=()=>{if(!data)return;playing=!playing;$('play').textContent=playing?'Pause':'Play';started=performance.now();startValue=Number($('time').value);if(playing)requestAnimationFrame(tick)};
-function tick(now){if(!playing)return;let t=startValue+(now-started)/1000;if(t>data.duration)t=0,started=now,startValue=0;$('time').value=t;render(t);requestAnimationFrame(tick)}
-</script>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>The Sensor — Perception Oscilloscope</title>
+  <style>
+    :root { color-scheme:dark; --bg:#080b10; --panel:#101722; --line:#27364a; --text:#e1ebf7; --muted:#8293aa; --cyan:#55d6be; --blue:#5fa8ff; --red:#ff6e7a; --amber:#ffc857; --purple:#bd93f9; font-family:Inter,ui-sans-serif,system-ui,sans-serif }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:5;background:#0b1018ee;backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:12px 18px}
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.brand{font-weight:750;letter-spacing:.02em;margin-right:10px}
+    button,select,input::file-selector-button{background:#182334;color:var(--text);border:1px solid #344761;border-radius:6px;padding:7px 10px}
+    button:hover,input::file-selector-button:hover{border-color:var(--cyan)} input[type=range]{accent-color:var(--cyan)} #time{flex:1;min-width:220px}
+    .status{display:flex;gap:14px;margin-top:9px;color:var(--muted);font:12px ui-monospace,monospace}.status strong{color:var(--text)}
+    main{padding:16px;max-width:1600px;margin:auto}.sensor-row{display:grid;grid-template-columns:minmax(250px,.8fr) minmax(300px,1fr) minmax(440px,1.55fr);gap:14px;margin-bottom:14px}
+    .panel{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;box-shadow:0 8px 24px #0005}
+    h2{font-size:14px;margin:0 0 10px;letter-spacing:.08em;text-transform:uppercase;color:#b9c8da}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    canvas{display:block;width:100%;background:#070a0f;border-radius:6px}.square{aspect-ratio:1}.scope{height:210px}.timeline{height:125px}
+    .legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:12px}.swatch{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+    .readouts{display:grid;grid-template-columns:repeat(4,minmax(78px,1fr));gap:7px;margin-top:9px}.readout{background:#0b111a;border:1px solid #202f42;border-radius:6px;padding:7px}
+    .readout span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.readout strong{font:17px ui-monospace,monospace}
+    #drop{padding:26px;text-align:center;border:1px dashed #41536b;color:var(--muted);border-radius:8px}#drop.active{border-color:var(--cyan);color:var(--cyan)}
+    #comparison{font:12px ui-monospace,monospace;white-space:pre-wrap;color:var(--muted)}.good{color:var(--cyan)!important}.bad{color:var(--red)!important}
+    @media(max-width:1050px){.sensor-row{grid-template-columns:1fr 1fr}.sensor-row .panel:last-child{grid-column:1/-1}}@media(max-width:700px){.sensor-row{grid-template-columns:1fr}.sensor-row .panel:last-child{grid-column:auto}.readouts{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="toolbar">
+      <div class="brand">THE SENSOR / PERCEPTION OSCILLOSCOPE</div>
+      <input id="file" type="file" accept="application/json"><button id="play">▶ Play</button><button id="back">◀ Step</button><button id="forward">Step ▶</button>
+      <select id="speed"><option>.25×</option><option>.5×</option><option selected>1×</option><option>2×</option><option>4×</option></select>
+      <input id="time" type="range" min="0" max="1" step="0.001" value="0"><strong id="clock">0.000 s</strong>
+    </div>
+    <div class="status"><span>schema <strong id="schema">no replay loaded</strong></span><span>visual <strong id="visualTime">—</strong></span><span>audio <strong id="audioTime">—</strong></span><span>comparison <strong id="compareState">reference only</strong></span></div>
+  </header>
+  <main>
+    <div id="drop">Choose or drop <code>demo_data.json</code> to begin synchronized replay.</div>
+    <div class="sensor-row" style="margin-top:14px">
+      <section class="panel"><h2>Visual source + vector field</h2><canvas id="image" class="square" width="384" height="384"></canvas><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>motion</span><span><i class="swatch" style="background:var(--amber)"></i>saliency</span></div></section>
+      <section class="panel"><div class="panel-head"><h2>A0 local feature plane</h2><select id="visualFeature"></select></div><canvas id="visualMap" class="square" width="384" height="384"></canvas><div class="legend"><span>8×8 raster of local tile evidence</span><span id="visualStatus">status —</span></div></section>
+      <section class="panel"><h2>A1 visual field / reflex state</h2><canvas id="visualBars" class="scope" width="900" height="250"></canvas><div id="visualReadouts" class="readouts"></div></section>
+    </div>
+    <div class="sensor-row">
+      <section class="panel"><h2>Stereo waveform</h2><canvas id="waveform" class="square" width="384" height="384"></canvas><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>left</span><span><i class="swatch" style="background:var(--red)"></i>right</span></div></section>
+      <section class="panel"><div class="panel-head"><h2>B0 cochlear field</h2><select id="audioFeature"></select></div><canvas id="cochlea" class="square" width="384" height="384"></canvas><canvas id="spatial" width="384" height="105" style="margin-top:8px"></canvas><div class="legend"><span>oldest → newest</span><span>8 slots × 16 bands</span><span id="audioStatus">status —</span></div></section>
+      <section class="panel"><h2>B1 auditory field / contextual state</h2><canvas id="audioBars" class="scope" width="900" height="250"></canvas><div id="audioReadouts" class="readouts"></div></section>
+    </div>
+    <section class="panel"><h2>Shared sensor timeline</h2><canvas id="timeline" class="timeline" width="1500" height="150"></canvas><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>visual A0→A1</span><span><i class="swatch" style="background:var(--purple)"></i>audio B0→B1</span><span><i class="swatch" style="background:var(--red)"></i>status / mismatch</span></div></section>
+    <section class="panel" style="margin-top:14px"><h2>Reference ↔ RTL comparison</h2><div id="comparison">Replay records may optionally include <code>rtl_field</code>. When present, the viewer reports the first mismatching byte and highlights the timeline.</div></section>
+  </main>
+  <script src="viewer.js"></script>
+</body>
+</html>

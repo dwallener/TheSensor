@@ -102,6 +102,8 @@ sound so every major channel has an obvious expected motion.
 This simulator is the primary integration target before direct sensor interfaces.
 It should support both the fast Python reference models and byte-for-byte RTL
 replay, allowing the same dashboard to compare expected and implemented behavior.
+The concrete display and replay contract is documented in
+[`sim/VIEWER_SPEC.md`](sim/VIEWER_SPEC.md).
 
 ## Stage 3 — Common reflex record
 
