@@ -802,3 +802,674 @@ The first auditory vertical slice is complete when it demonstrates all of the fo
 Prototype with **two PUI DMM-4026-B-I2S evaluation boards or equivalent modules**, driven from one 3.072 MHz bit clock and one 48 kHz word-select clock. Capture signed PCM into 256-sample stereo blocks, retain raw samples in a five-second ring, and replay committed blocks into onset, spectral, and localization pipelines with a 128-sample hop.
 
 This is intentionally ordinary digital audio plumbing. The novel work begins after capture: deciding which fast and slow auditory representations are compact, stable, and useful to a downstream learner.
+
+---
+
+# Part III — Visual processing and representation
+
+## 33. Representation decision
+
+The canonical per-frame output SHALL be a **fixed 8 × 8 spatial grid with 16 feature channels per grid cell**:
+
+```text
+8 × 8 × 16 = 1024 activation values per visual frame
+```
+
+The grid is retinotopic: every `(x, y)` cell always refers to the same calibrated region of the field of view. The channel axis contains outputs from several processing stages, including local appearance, oriented energy, temporal change, motion, stereo, grouping, looming, and salience. Flattening the tensor produces a stable 1024-dimensional vector; reshaping it restores the visual field.
+
+```text
+buffered stereo frames
+          │
+          v
+  calibrated tile scheduler
+          │
+          v
+ local feature transform ─────> fine intermediate feature maps
+                                           │
+                                spatial/temporal pooling
+                                           │
+                                           v
+                                  8 × 8 × 16 tensor
+                                     │         │
+                                     │         └─> optional sparse events
+                                     v
+                         flatten to 1024-d model input
+```
+
+This answers the central representation question:
+
+> The output is a fixed grid of visual “hypercolumns.” Each grid cell contains the same 16 measurements, and each channel viewed across the grid forms an 8 × 8 activity map.
+
+The representation SHALL preserve:
+
+- spatial topology;
+- frame and exposure time;
+- stable channel identity and receptive-field scale;
+- signed direction or polarity;
+- magnitude;
+- confidence and ambiguity;
+- source provenance;
+- enough validity and health information to distinguish a quiet scene from a dead or disconnected sensor.
+
+## 34. TinyTapeout design envelope
+
+The V0 ASIC experiment assumes the same envelope as the Jane Street ASIC challenge:
+
+- IHP 130 nm CMOS5L process;
+- TinyTapeout CMOS5L Verilog template;
+- maximum 6 × 4 tile allocation;
+- approximately 1,000 logic cells per tile as a rough early estimate, before placement and routing overhead;
+- 8 dedicated inputs, 8 dedicated outputs, and 8 bidirectional pins, in addition to clock, reset, and enable;
+- 50 MHz design target until physical results justify another value;
+- open-source RTL, verification, and build inputs.
+
+References: [Jane Street competition rules](https://blog.janestreet.com/protocol-emulator-asic-competition/), [TinyTapeout IHP Verilog template](https://github.com/TinyTapeout/ttihp-verilog-template)
+
+These constraints make several architectural consequences non-negotiable:
+
+- Full stereo frames SHALL remain off-chip.
+- V0 SHALL NOT require an on-chip frame buffer.
+- Large line buffers SHOULD remain off-chip unless synthesis proves a specific buffer affordable.
+- The chip SHALL accept byte-serial work units from an external controller.
+- The chip SHALL emit byte-serial state records and tokens.
+- The feature arithmetic SHALL be fixed-point and deterministic.
+- Synthesis, placement, routing, and timing—not a spreadsheet gate estimate—are the final authority on what fits.
+
+## 35. System and ASIC partition
+
+### 35.1 Off-chip responsibilities
+
+The FPGA, MCU, or host-side acquisition system SHALL initially own:
+
+- image-sensor configuration and shared exposure trigger;
+- stereo-pair buffering and ownership;
+- bad-frame rejection and metadata;
+- lens correction and rectification when enabled;
+- tile scheduling;
+- retrieval of current, previous, left, and right patches;
+- long temporal history;
+- global token arbitration when the ASIC cannot retain a complete frame of candidates;
+- raw trigger retention;
+- representation logging and model adapters.
+
+### 35.2 First-ASIC responsibilities
+
+The first ASIC SHALL be a local visual transform. It SHALL:
+
+- accept a small image patch and its metadata;
+- optionally accept the corresponding previous-frame patch;
+- compute deterministic local statistics and feature energy;
+- emit one partial `VisualCell` record and optional local token candidates;
+- expose saturation, invalid-input, and arithmetic-overflow flags;
+- support exact replay and reset between independent work units.
+
+The first ASIC SHALL NOT perform:
+
+- full-frame storage;
+- arbitrary image rectification;
+- dense stereo correspondence;
+- object detection or classification;
+- contour tracing across a complete image;
+- region tracking across a complete image;
+- learned inference;
+- text or language-token generation.
+
+This partition is intentional. The ASIC tests whether selected sensory primitives are small, fast, power-efficient, and useful—not whether an entire vision system can be compressed into 24 TinyTapeout tiles.
+
+### 35.3 First-synthesis profile: monocular temporal
+
+The first synthesis and place-and-route attempt SHALL be monocular. It consumes the current patch and the previous patch from the same eye. It SHALL NOT contain stereo matching, binocular state, or right-eye datapath duplication.
+
+The area and state budget avoided by omitting stereo SHALL be spent first on basic temporal computation:
+
+1. signed current-minus-previous response;
+2. separate accumulated ON and OFF energy where affordable;
+3. one-delay Reichardt-like horizontal motion;
+4. one-delay Reichardt-like vertical motion;
+5. motion confidence or opponent ambiguity.
+
+If the complete profile does not fit, capability SHALL be removed in this order:
+
+1. local token-candidate generation;
+2. vertical motion, retaining horizontal opponent motion;
+3. diagonal orientation channels;
+
+Signed temporal change, the byte-stream interface, deterministic replay, and saturation/error reporting SHALL not be removed merely to preserve a larger filter bank.
+
+## 36. Visual processing pipeline
+
+The logical pipeline consists of the following stages. A stage may run in software, FPGA logic, or ASIC logic while retaining identical fixed-point semantics.
+
+### 36.1 Stage 0 — frame validation and calibration
+
+Before feature extraction, the system SHALL:
+
+- validate the left/right stereo-pair identity;
+- associate the exposure timestamp and calibration identifier;
+- reject or flag incomplete frames;
+- apply fixed bad-pixel replacement when configured;
+- apply geometric rectification when stereo disparity is requested;
+- lock or record exposure and gain;
+- establish the current-to-previous-frame interval.
+
+Photometric correction SHOULD remain minimal. Hidden automatic contrast, sharpening, denoising, or local tone mapping can create false temporal and motion features.
+
+### 36.2 Stage 1 — tile and patch scheduling
+
+The image SHALL be divided into small processing tiles independently of the final 8 × 8 output grid. V0 begins with a 16 × 16 active-pixel processing tile unless transport modelling selects another size.
+
+Each work unit SHALL include the active tile plus whatever halo is required by the selected local kernels. A 3 × 3 spatial kernel therefore receives an 18 × 18 patch for a 16 × 16 active tile when halo pixels are sent explicitly.
+
+A work unit MAY contain:
+
+- current patch from the selected eye;
+- previous patch from that same eye;
+- corresponding patch from the other eye in a later binocular profile;
+- validity mask;
+- frame, tile, timing, and configuration metadata.
+
+The scheduler SHALL use a declared patch order and SHALL NOT make the ASIC infer frame position from uninterrupted timing. Fine tile outputs SHALL be accumulated or pooled into the corresponding final 8 × 8 grid cell.
+
+### 36.3 Stage 2 — local normalization
+
+The local transform SHOULD compute:
+
+- mean luminance;
+- local contrast or mean absolute deviation;
+- optional fixed-offset subtraction;
+- normalized signed contrast samples;
+- saturation and invalid-pixel counts.
+
+Normalization SHALL use fixed, documented arithmetic. Adaptation state, when used, SHALL be versioned and replayable. Independent hidden normalization between stereo eyes is prohibited before disparity measurement.
+
+### 36.4 Stage 3 — oriented spatial energy
+
+The V1-like spatial stage SHOULD compute responses for at least four orientation families:
+
+- horizontal;
+- vertical;
+- rising diagonal;
+- falling diagonal.
+
+The first implementation MAY use small integer gradient or Gabor-like kernels rather than literal floating-point Gabors. Opposite-polarity responses SHOULD be combined into local orientation energy when phase invariance is useful.
+
+The four orientation-energy channels SHALL remain available for pooling into `VisualFrame1024`. A consumer that wants a compact continuous orientation estimate MAY derive a doubled-angle vector:
+
+```text
+edge_c2 = edge_energy × cos(2 × orientation)
+edge_s2 = edge_energy × sin(2 × orientation)
+```
+
+The doubled-angle form avoids the discontinuity between orientations near 0° and 180°. A downstream consumer recovers orientation as:
+
+```text
+orientation = 0.5 × atan2(edge_s2, edge_c2)
+```
+
+The ASIC does not need to compute trigonometric functions. V0 SHALL output the four non-negative orientation energies; doubled-angle conversion, when wanted for tokens or analysis, runs downstream.
+
+### 36.5 Stage 4 — temporal ON/OFF response
+
+Given current and previous patches, the temporal stage SHOULD compute:
+
+- signed mean change;
+- positive or ON energy;
+- negative or OFF energy;
+- absolute change energy;
+- temporal confidence based on valid interval and exposure consistency.
+
+The signed response SHALL preserve the distinction between appearance and disappearance. A single unsigned “difference” value is insufficient.
+
+### 36.6 Stage 5 — local motion
+
+The first motion stage SHOULD implement Reichardt-like or equivalent local correlation at:
+
+- one temporal delay: the previous committed visual frame;
+- one spatial displacement;
+- four cardinal directions.
+
+Diagonal direction support MAY be added if area permits. Opposed correlations SHALL be subtracted to form signed horizontal and vertical motion components.
+
+V0 local motion is evidence, not optical-flow ground truth. Its output SHALL include confidence derived from texture energy, correlation strength, and opponent ambiguity.
+
+### 36.7 Stage 6 — stereo disparity
+
+Stereo disparity is part of the canonical representation but is explicitly absent from the first monocular synthesis profile.
+
+The software reference SHALL initially estimate rectified horizontal disparity using a bounded search and report:
+
+- signed disparity in pixels;
+- match strength;
+- left/right consistency;
+- ambiguity between best and second-best matches;
+- invalid status for textureless, occluded, or inconsistent cells.
+
+Disparity SHALL NOT be converted to metric depth unless focal length, baseline, calibration, and uncertainty are available. A poor match SHALL remain invalid rather than becoming a confident far-away point.
+
+### 36.8 Stage 7 — spatial and temporal pooling
+
+V2/V4-like behavior begins as pooling, not object naming. Later system stages MAY compute:
+
+- contour continuation;
+- corners, junctions, and line endings;
+- coherent motion regions;
+- motion divergence and looming;
+- center-surround saliency;
+- stable proto-regions;
+- region persistence and track association.
+
+These stages SHALL consume and emit the same documented field/token semantics. They MAY initially run off-chip. Biological labels such as V1, V2, MT, or V4 are architectural analogies, not claims of biological equivalence.
+
+## 37. Canonical dense representation: `VisualFrame1024`
+
+The canonical model-facing representation is:
+
+```text
+VisualFrame1024 {
+    VisualFrameHeader header;
+    VisualCell cells[8][8];
+}
+
+VisualCell {
+    uint8 luminance;
+    uint8 contrast;
+    uint8 edge_horizontal;
+    uint8 edge_diag_rising;
+    uint8 edge_vertical;
+    uint8 edge_diag_falling;
+    int8  temporal_change;
+    int8  motion_x;
+    int8  motion_y;
+    uint8 motion_confidence;
+    int8  disparity;
+    uint8 depth_confidence;
+    uint8 junction_energy;
+    uint8 contour_coherence;
+    int8  looming;
+    uint8 salience;
+}
+```
+
+Each `VisualCell` is 16 bytes. Sixty-four cells therefore produce exactly 1,024 activation bytes per frame.
+
+The stable channel registry is:
+
+| Channel | Stage analogy | Value |
+| ---: | --- | --- |
+| 0 | Retina/local | Mean luminance |
+| 1 | Retina/local | Local contrast |
+| 2 | V1-like | Horizontal oriented energy |
+| 3 | V1-like | Rising-diagonal oriented energy |
+| 4 | V1-like | Vertical oriented energy |
+| 5 | V1-like | Falling-diagonal oriented energy |
+| 6 | Temporal | Signed change: OFF negative, ON positive |
+| 7 | Reichardt/MT-like | Signed horizontal motion, Q4.3 pixels/frame |
+| 8 | Reichardt/MT-like | Signed vertical motion, Q4.3 pixels/frame |
+| 9 | Motion | Motion confidence |
+| 10 | Binocular | Signed disparity in pixels; `-128` invalid |
+| 11 | Binocular | Disparity/depth confidence |
+| 12 | V2-like | Junction, corner, or termination energy |
+| 13 | V2/V4-like | Contour or proto-region coherence |
+| 14 | Motion/context | Signed contraction/expansion or looming evidence |
+| 15 | V4/attention-like | Salience and novelty |
+
+These are functional analogies, not claims that a particular biological area contains exactly this representation.
+
+### 37.1 Flattening
+
+The normative flattened index is cell-major:
+
+```text
+index = ((y * 8) + x) * 16 + channel
+```
+
+where `x` and `y` are in `0..7`, `(0, 0)` is the top-left of the calibrated visual field, and `channel` is in `0..15`.
+
+Cell-major ordering matches the tile-processing hardware: after a spatial bin is complete, its 16 output values can be emitted consecutively. A model or visualization MAY transpose the same data into channel-major `[16][8][8]` form. In channel-major form, each channel is an 8 × 8 activity bitmap.
+
+### 37.2 Validity and confidence
+
+The 1,024 activation values are accompanied by metadata rather than overloaded sentinel values wherever possible:
+
+- a 16-bit implemented-channel mask;
+- a 64-bit valid-cell mask;
+- saturation and overflow flags;
+- frame-level sensor-health state;
+- explicit motion and depth confidence channels;
+- `configuration_id` defining scaling and quantization.
+
+An unimplemented channel SHALL have its implemented bit clear. It SHALL NOT masquerade as a valid zero activation.
+
+Signed channels use two's-complement `int8`. Unsigned energy channels use `uint8`. Narrowing SHALL use documented saturation and rounding.
+
+### 37.3 Spatial pooling
+
+The 8 × 8 grid is independent of sensor resolution. At VGA, each final cell covers a nominal 80 × 60 pixel region; at 1280 × 800, each covers 160 × 100 pixels. Fine local filters run before this pooling, so a final grid cell aggregates many smaller receptive fields rather than applying one enormous Gabor kernel to its entire region.
+
+Pooling MAY use mean, maximum, energy sum, opponent sum, or confidence-weighted reduction according to the channel. The reduction rule for every channel SHALL be versioned and bit-accurate.
+
+The fixed grid makes recordings comparable across camera resolution changes. Geometric calibration SHALL define how raw pixels map into normalized grid coordinates.
+
+### 37.4 Bandwidth
+
+One `VisualFrame1024` activation payload is exactly 1,024 bytes. At 30 frames/s this is 30,720 bytes/s; at 60 frames/s it is 61,440 bytes/s, before headers and optional masks. V0 SHALL emit the full vector for every processed frame because this bandwidth is negligible relative to the raw sensor streams.
+
+## 38. Optional sparse representation: `VisualToken`
+
+The optional sparse primitive is a fixed 8-byte record scoped to a `VisualFrameHeader`:
+
+```text
+byte 0: kind[3:0] | source[1:0] | lane[1:0]
+byte 1: x
+byte 2: y
+byte 3: scale[3:0] | flags[3:0]
+byte 4: parameter_0
+byte 5: parameter_1
+byte 6: magnitude
+byte 7: confidence
+```
+
+Field semantics:
+
+- `kind` selects a stable primitive type.
+- `source` is left, right, binocular, or fused.
+- `lane` is reflex, percept, context, or diagnostic.
+- `x` and `y` are normalized unsigned coordinates from 0 to 255 at the centre of the primitive.
+- `scale` encodes the spatial support diameter in half-octave steps.
+- `flags` carries polarity, ambiguity, saturation, or type-specific status.
+- `parameter_0` and `parameter_1` are signed or unsigned according to `kind`.
+- `magnitude` reports evidence strength.
+- `confidence` reports the reliability of the interpretation, not a duplicate magnitude.
+
+Initial token kinds are:
+
+| Kind | `parameter_0` | `parameter_1` | Meaning |
+| --- | --- | --- | --- |
+| `EDGE` | signed `edge_c2` | signed `edge_s2` | Oriented local contrast |
+| `CHANGE` | signed temporal response | integration interval code | ON/OFF temporal event |
+| `MOTION` | signed Q4.3 `dx` | signed Q4.3 `dy` | Local direction-selective motion |
+| `DISPARITY` | signed pixel disparity | match residual | Binocular horizontal displacement |
+| `LOOM` | signed divergence | log time-to-contact code | Expansion or contraction evidence |
+| `JUNCTION` | packed orientation pair | junction subtype | Corner, crossing, or termination |
+| `REGION` | support width code | support height code | Unlabelled coherent proto-region |
+| `HEALTH` | status code | affected source | Sensor or pipeline condition |
+
+Unused kinds SHALL remain reserved. Meaning SHALL NOT be changed silently after data has been recorded; incompatible changes require a representation-version increment.
+
+## 39. Frame and stream envelope
+
+Every cell lattice and token group SHALL be associated with a logical header containing at least:
+
+```text
+VisualFrameHeader {
+    representation_version
+    channel_schema_id
+    frame_id
+    exposure_timestamp
+    frame_interval
+    source_mask
+    raw_width
+    raw_height
+    cell_width
+    cell_height
+    lattice_columns
+    lattice_rows
+    implemented_channel_mask
+    valid_cell_mask
+    calibration_id
+    configuration_id
+    flags
+}
+```
+
+Header flags SHALL report:
+
+- complete or partial stereo pair;
+- key state frame versus token-only frame;
+- dropped input or output data;
+- exposure/gain change;
+- calibration or configuration change;
+- buffer overflow;
+- reset or state discontinuity.
+
+The physical byte protocol MAY encode this header as multiple records. The logical fields and their meaning SHALL remain identical across files, software APIs, FPGA streams, and ASIC I/O.
+
+## 40. State, events, and silence
+
+Sparse events alone are insufficient. No events may mean that the world is stable, thresholds are too high, the camera is covered, or the pipeline has failed.
+
+The normal output stream SHALL therefore contain:
+
+1. one complete `VisualFrame1024` for every processed frame;
+2. optional sparse `VisualToken` records derived from those frames;
+3. explicit health and heartbeat records;
+4. triggered raw stereo windows around selected events.
+
+Initial policy:
+
+- visual processing runs on every committed stereo pair;
+- a complete 1,024-byte activation vector is emitted for every processed frame;
+- token candidates MAY be evaluated every frame;
+- health is emitted at least once per second and immediately on change;
+- the default sparse-token budget is 32 tokens per visual frame;
+- exceeding the token budget SHALL set overflow and candidate-count metadata.
+
+Tokens SHOULD be emitted on threshold crossing, substantial change, or local non-maximum selection—not continuously merely because a feature remains present. A persistent edge belongs in the 1024-vector; the appearance, movement, or disappearance of that edge may also produce an event.
+
+## 41. Candidate selection and token arbitration
+
+Each local transform MAY produce zero or more token candidates. Candidate priority SHOULD combine:
+
+- normalized feature magnitude;
+- confidence;
+- novelty relative to recent state;
+- task-independent urgency, such as rapid looming;
+- spatial non-maximum suppression;
+- per-kind quotas preventing one feature family from monopolizing output.
+
+V0 global arbitration MAY run off-chip because the first ASIC does not retain a full-frame candidate set. The ASIC SHALL expose sufficient magnitude, confidence, position, and kind information for deterministic external arbitration.
+
+The selection algorithm and thresholds SHALL be configuration data, not undocumented constants. Recorded datasets SHALL retain the configuration identifier and candidate-overflow counts so later experiments can distinguish representation failure from selection failure.
+
+## 42. Model-facing interpretation
+
+The representation is intended to support two complementary adapters.
+
+### 42.1 Frame-vector adapter
+
+`VisualFrame1024` is simultaneously:
+
+- a 1024-dimensional vector for a linear projection or MLP;
+- an `[8][8][16]` grid for cell-oriented processing;
+- a `[16][8][8]` tensor for CNN or feature-plane processing;
+- 64 spatial tokens, each containing a 16-dimensional visual hypercolumn;
+- 16 feature tokens, each containing an 8 × 8 activation bitmap.
+
+A model adapter MAY choose any of these views without changing the recorded representation. The channel meanings remain physically interpretable and stable across training runs.
+
+### 42.2 Event adapter
+
+Each `VisualToken` becomes one temporal-model input containing embeddings of:
+
+- kind, source, and lane;
+- normalized position and scale;
+- the two type-specific parameters;
+- magnitude and confidence;
+- frame time and elapsed time from prior token;
+- calibration and configuration identity when relevant.
+
+The model learns the embedding. The sensor board SHALL NOT stringify records into prose or invent object nouns.
+
+### 42.3 Fusion adapter
+
+Visual tokens share the common device timeline with auditory and olfactory events. Cross-modal association SHALL occur through time, location/bearing, confidence, and learned context. Fusion MAY create a new record, but SHALL NOT erase the visual evidence from which it was inferred.
+
+## 43. First TinyTapeout kernel
+
+The first tapeout candidate is deliberately narrower than the canonical representation.
+
+The initial synthesis profile is named `MONO_TEMPORAL_V0`. Its source mask identifies one eye, and its `implemented_channel_mask` enables channels 0 through 9 only (`0x03FF`). Channels 10 through 15 remain in the stable frame schema with their implemented bits clear.
+
+### 43.1 Input work unit
+
+Default input:
+
+- one 16 × 16 active processing tile with a one-pixel halo;
+- current monochrome patch from one eye;
+- previous monochrome patch from the same eye;
+- tile coordinate;
+- frame interval code;
+- validity and configuration flags.
+
+This is 648 pixel bytes for two 18 × 18 patches plus a small header. At VGA, there are 40 × 30 = 1,200 non-overlapping 16 × 16 processing tiles. At 30 frames/s, naïve halo-expanded current/previous transport is approximately 23.3 MB/s before metadata and handshakes. This is plausible on a 50 MHz byte interface but does not provide unlimited margin. The external scheduler SHOULD therefore support one or more of:
+
+- 16 × 16 active cells;
+- row-strip reuse that avoids retransmitting overlapping halo pixels;
+- reduced frame rate;
+- current-frame-only spatial mode;
+- precomputed row or tile statistics.
+
+The selected transport schedule SHALL be proven against actual I/O cycles before RTL is frozen.
+
+### 43.2 Required kernel outputs
+
+The first monocular kernel SHOULD produce fine-tile contributions for:
+
+- luminance;
+- contrast;
+- four oriented-energy channels;
+- signed temporal change;
+- signed horizontal and vertical motion evidence;
+- motion confidence;
+- saturation, invalid-input, and arithmetic-overflow flags.
+
+An off-chip accumulator SHALL pool these contributions into the appropriate 8 × 8 final grid cells. The kernel MAY emit local `EDGE`, `CHANGE`, and `MOTION` token candidates. Disparity, salience history, looming, junctions, contour coherence, and global token arbitration are explicitly outside the first kernel.
+
+No logic or storage SHALL be reserved for stereo merely to keep a future path convenient. A binocular successor may reuse the same byte protocol and frame schema after the monocular temporal kernel has physical area and timing results.
+
+### 43.3 Arithmetic constraints
+
+- Coefficients SHALL be small signed integers or powers of two where practical.
+- Accumulators SHALL have analytically justified widths.
+- Narrowing SHALL use documented rounding and saturation.
+- Division SHOULD be avoided or implemented by bounded reciprocal approximation.
+- Every fixed-point operation SHALL have a bit-accurate software reference.
+- Configuration registers SHALL be minimal and reset to a documented useful mode.
+
+### 43.4 TinyTapeout byte interface
+
+The intended mapping is:
+
+- `ui_in[7:0]`: input byte stream;
+- `uo_out[7:0]`: output byte stream;
+- selected `uio` pins: input-valid, input-ready, output-valid, output-ready, record boundary, mode/configuration, and error/interrupt signaling;
+- `clk`: nominal 50 MHz processing and interface clock;
+- `rst_n`: complete deterministic reset;
+- `ena`: standard TinyTapeout project enable.
+
+The exact `uio` allocation SHALL be frozen only after a cycle-accurate transport model demonstrates that input and output can proceed without ambiguous ownership or deadlock.
+
+## 44. Bandwidth examples
+
+### 44.1 Canonical representation output
+
+The canonical activation payload is independent of camera resolution:
+
+- 8 × 8 spatial cells;
+- 16 one-byte feature values per cell;
+- 1,024 bytes per frame;
+- 30,720 bytes/s at 30 frames/s;
+- 61,440 bytes/s at 60 frames/s;
+- optional 32 tokens/frame add 7,680 bytes/s at 30 fps;
+- headers, masks, and health add comparatively little.
+
+This is not an output-I/O problem. V0 can emit the entire activation vector for every frame and defer sparse-only operation until there is evidence that it helps.
+
+### 44.2 ASIC work-unit input
+
+Input bandwidth is more constraining because naïve halo patches duplicate pixels. The transport model SHALL account for:
+
+- current and previous patches;
+- halo duplication;
+- metadata and framing;
+- idle and handshake cycles;
+- configuration traffic;
+- output traffic when interfaces cannot operate concurrently.
+
+V0 SHOULD prefer a schedule that keeps sustained byte utilization below 70% of the available interface rate, leaving margin for control, stalls, and physical timing.
+
+## 45. Why this representation
+
+The representation is intentionally positioned between raw pixels and semantic labels.
+
+It is preferable to unbounded raw feature-map dumps because it:
+
+- fixes stable physical meanings and units;
+- bounds bandwidth;
+- exposes uncertainty;
+- supports sparse computation;
+- remains inspectable and replayable;
+- can be consumed by both learned and non-learned systems.
+
+It is preferable to object labels because it:
+
+- does not force the sensor to know the downstream ontology;
+- preserves novel or ambiguous stimuli;
+- allows later models to revise interpretations;
+- retains motion and timing that labels usually discard;
+- fits the computational scale of the proposed hardware.
+
+It is preferable to opaque learned embeddings as the only output because it:
+
+- remains stable as models change;
+- provides a test oracle for hardware;
+- permits cross-implementation comparison;
+- makes sensor and calibration failures visible;
+- can still be projected into learned embeddings downstream.
+
+## 46. Visual-pipeline acceptance tests
+
+The software reference representation is acceptable when:
+
+1. A uniform patch produces luminance but negligible contrast, edge, temporal, and motion energy.
+2. Bars at multiple angles activate the expected orientation channels and interpolate predictably between them.
+3. Appearing and disappearing patterns produce opposite-signed temporal responses.
+4. Translation in four directions produces correctly signed local motion components.
+5. Textureless or ambiguous motion produces lower confidence than well-textured translation.
+6. Rectified stereo targets produce monotonic disparity with distance and invalid results under deliberate occlusion.
+7. Full frame vectors plus health metadata distinguish stable input, covered cameras, and disconnected cameras.
+8. Token budgets are deterministic and overflow is explicitly reported.
+9. Recorded replay reproduces bit-identical 1024-vectors and token candidates.
+10. Visual timestamps align with auditory events on the common device clock.
+
+The first ASIC kernel is acceptable when:
+
+1. Its outputs match the bit-accurate software model over directed and randomized patches.
+2. Reset, malformed records, backpressure, saturation, and arithmetic boundaries are covered.
+3. The byte transport sustains the selected V0 work schedule with the required margin.
+4. Synthesis fits within the 6 × 4 allocation with routing margin.
+5. The placed-and-routed design meets the declared 50 MHz target at the required corners.
+6. Gate-level replay produces the same committed records as RTL, allowing for documented timing.
+
+## 47. Visual-pipeline open decisions
+
+- Processing-tile size and pooling rule for each final-grid channel.
+- Exact integer spatial kernels and coefficient widths.
+- Patch transport versus row-strip transport.
+- Whether current and previous monocular images are both sent as pixels or one is compressed into temporal statistics.
+- Whether the first kernel emits only fine-tile contributions or also local token candidates.
+- Token thresholds, per-kind quotas, and non-maximum-suppression neighborhood.
+- Whether a later low-bandwidth mode may omit unchanged full vectors.
+- Disparity search range and whether a later ASIC should accelerate it.
+- Novelty estimator and how much history it requires.
+- The smallest downstream task suite that genuinely measures representation usefulness.
+
+## 48. Current visual-pipeline recommendation
+
+Treat **`VisualFrame1024`—an 8 × 8 grid of 16-channel visual hypercolumns—as the ground-truth frame representation**. Flatten it when a model wants a 1024-dimensional vector; reshape it when a model or human wants feature planes. `VisualToken` records are optional attention-oriented derivatives, not the primary representation.
+
+Emit the full 1,024-byte vector for every processed frame. Retain raw sensor windows around salient events. Use the first TinyTapeout synthesis profile only for monocular fine-tile luminance, contrast, four oriented-energy channels, signed temporal change, and horizontal/vertical motion evidence; pool those tile results into the final 8 × 8 grid off-chip. Mark stereo and higher grouping channels unimplemented.
+
+This gives us a representation rich enough to evaluate with real downstream tasks while keeping the first silicon question small and falsifiable:
+
+> Can a tiny deterministic visual kernel turn buffered pixels into local evidence that is more useful per byte and per joule than the pixels themselves?
