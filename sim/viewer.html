@@ -30,20 +30,21 @@
       <div class="brand">THE SENSOR / PERCEPTION OSCILLOSCOPE</div>
       <input id="file" type="file" accept="application/json"><button id="play">▶ Play</button><button id="back">◀ Step</button><button id="forward">Step ▶</button>
       <select id="speed"><option>.25×</option><option>.5×</option><option selected>1×</option><option>2×</option><option>4×</option></select>
+      <select id="scaleMode" aria-label="Display scaling"><option value="auto" selected>Auto gain (p99)</option><option value="raw">Raw byte scale</option></select>
       <input id="time" type="range" min="0" max="1" step="0.001" value="0"><strong id="clock">0.000 s</strong>
     </div>
-    <div class="status"><span>schema <strong id="schema">no replay loaded</strong></span><span>source <strong id="source">—</strong></span><span>visual <strong id="visualTime">—</strong></span><span>audio <strong id="audioTime">—</strong></span><span>comparison <strong id="compareState">reference only</strong></span></div>
+    <div class="status"><span>schema <strong id="schema">no replay loaded</strong></span><span>source <strong id="source">—</strong></span><span>display <strong id="displayScale">p99 auto gain; labels are raw</strong></span><span>visual <strong id="visualTime">—</strong></span><span>audio <strong id="audioTime">—</strong></span><span>comparison <strong id="compareState">reference only</strong></span></div>
   </header>
   <main>
     <div id="drop">Choose or drop <code>demo_data.json</code> to begin synchronized replay.</div>
     <div class="sensor-row" style="margin-top:14px">
       <section class="panel"><h2>Visual source + vector field</h2><canvas id="image" class="square" width="384" height="384"></canvas><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>motion</span><span><i class="swatch" style="background:var(--amber)"></i>saliency</span></div></section>
-      <section class="panel"><div class="panel-head"><h2>A0 local feature plane</h2><select id="visualFeature"></select></div><canvas id="visualMap" class="square" width="384" height="384"></canvas><div class="legend"><span>8×8 raster of local tile evidence</span><span id="visualStatus">status —</span></div></section>
+      <section class="panel"><div class="panel-head"><h2>A0 local feature plane</h2><select id="visualFeature"></select></div><canvas id="visualMap" class="square" width="384" height="384"></canvas><div class="legend"><span>8×8 raster; numbers are raw bytes</span><span id="visualScale">scale —</span><span id="visualStatus">status —</span></div></section>
       <section class="panel"><h2>A1 visual field / reflex state</h2><canvas id="visualBars" class="scope" width="900" height="250"></canvas><div id="visualReadouts" class="readouts"></div></section>
     </div>
     <div class="sensor-row">
       <section class="panel"><h2>Stereo waveform</h2><canvas id="waveform" class="square" width="384" height="384"></canvas><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>left</span><span><i class="swatch" style="background:var(--red)"></i>right</span></div></section>
-      <section class="panel"><div class="panel-head"><h2>B0 cochlear field</h2><select id="audioFeature"></select></div><canvas id="cochlea" class="square" width="384" height="384"></canvas><canvas id="spatial" width="384" height="105" style="margin-top:8px"></canvas><div class="legend"><span>oldest → newest</span><span>8 slots × 16 bands</span><span id="audioStatus">status —</span></div></section>
+      <section class="panel"><div class="panel-head"><h2>B0 cochlear field</h2><select id="audioFeature"></select></div><canvas id="cochlea" class="square" width="384" height="384"></canvas><canvas id="spatial" width="384" height="105" style="margin-top:8px"></canvas><div class="legend"><span>oldest → newest</span><span>8 slots × 16 bands</span><span id="audioScale">scale —</span><span id="audioStatus">status —</span></div></section>
       <section class="panel"><h2>B1 auditory field / contextual state</h2><canvas id="audioBars" class="scope" width="900" height="250"></canvas><div id="audioReadouts" class="readouts"></div></section>
     </div>
     <section class="panel"><h2>Shared sensor timeline</h2><canvas id="timeline" class="timeline" width="1500" height="150"></canvas><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>visual A0→A1</span><span><i class="swatch" style="background:var(--purple)"></i>audio B0→B1</span><span><i class="swatch" style="background:var(--red)"></i>status / mismatch</span></div></section>

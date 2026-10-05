@@ -14,6 +14,8 @@ dashboard.
 
 - The current buffered image frame with its 8 x 8 processing grid.
 - A0 local motion vectors and a selectable local feature heatmap.
+- Stable replay-wide 99th-percentile display gain for weak natural-image
+  responses, with a raw-byte-scale switch and unmodified numeric labels.
 - A1 translation, expansion, rotation, saliency, activity, confidence, and
   consistency.
 - Status, saturation, and error indications.
