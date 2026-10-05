@@ -23,6 +23,10 @@ module tt_um_dwallener_sensor (
   wire output_first;
   wire output_last;
 
+  // These physical pins are outputs in this profile; consume their unused input
+  // paths so the standard TinyTapeout bidirectional interface lints cleanly.
+  wire _unused = &{uio_in[7:2], 1'b0};
+
   mono_temporal_core core (
       .clk          (clk),
       .rst_n        (rst_n),
