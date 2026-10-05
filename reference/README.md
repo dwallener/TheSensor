@@ -11,7 +11,7 @@ adapting per-band acoustic context.
 
 The fixed model uses:
 
-- signed PCM16 input narrowed to 12 bits;
+- canonical signed PCM8 input, sign-extended without rescaling;
 - 16 ERB-spaced bands from 125 Hz to 8 kHz;
 - Q12 resonator, sine, and cosine constants;
 - saturating signed 26-bit resonator state;

@@ -87,12 +87,8 @@ async def process(dut, current, previous, stall=False):
 async def process_audio(dut, left, right, stall=False):
     await send_byte(dut, 0xB0)
     for left_sample, right_sample in zip(left, right):
-        left_word = left_sample & 0xFFFF
-        right_word = right_sample & 0xFFFF
-        await send_byte(dut, left_word & 0xFF)
-        await send_byte(dut, left_word >> 8)
-        await send_byte(dut, right_word & 0xFF)
-        await send_byte(dut, right_word >> 8)
+        await send_byte(dut, left_sample & 0xFF)
+        await send_byte(dut, right_sample & 0xFF)
     return await receive_response(dut, length=130, stall=stall)
 
 
@@ -187,11 +183,11 @@ async def test_stereo_filterbank(dut):
     cases = [([0] * WINDOW_SIZE, [0] * WINDOW_SIZE)]
     frequency = CENTER_FREQUENCIES[8]
     left = [
-        round(8_000 * math.sin(2 * math.pi * frequency * n / SAMPLE_RATE))
+        round(31 * math.sin(2 * math.pi * frequency * n / SAMPLE_RATE))
         for n in range(WINDOW_SIZE)
     ]
     right = [
-        round(12_000 * math.sin(
+        round(47 * math.sin(
             2 * math.pi * frequency * n / SAMPLE_RATE
             + 2 * math.pi * frequency / SAMPLE_RATE
         ))

@@ -1710,22 +1710,21 @@ may create different routing, fanout, and clock-load pressure.
 ### 52.1 Input contract
 
 The ASIC does not receive analogue voltages. The acquisition device or microphone
-ADC SHALL first produce two synchronized signed PCM streams. The host SHALL narrow
-or saturate them to signed 16-bit samples using one documented common scale.
+ADC SHALL produce two synchronized signed 8-bit PCM streams in the canonical B0
+format. B0 assumes those samples already have the intended scale; it does not
+perform an input-format conversion or gain adjustment.
 
 One independent auditory work unit is:
 
 ```text
 0xB0
 128 repetitions of {
-    left_sample_lsb,
-    left_sample_msb,
-    right_sample_lsb,
-    right_sample_msb
+    left_sample_s8,
+    right_sample_s8
 }
 ```
 
-Samples are signed two's-complement little-endian. The 128-sample window is 5.333 ms
+Samples are signed two's-complement bytes. The 128-sample window is 5.333 ms
 at 24 kHz. Consecutive work units begin 64 samples apart; the external scheduler
 resends the overlapping half-window. This small bandwidth cost makes each work unit
 self-contained and exactly replayable without requiring the ASIC to retain raw PCM
@@ -1802,7 +1801,7 @@ average of 48,000 stereo sample pairs/s, or about 1,041 clocks per transmitted p
 Full-window stereo state plus reusable early/late half-window state requires 64
 band-state updates per pair, leaving about 16 clocks per update for a shared
 sequential datapath before output overhead. I/O
-bandwidth is also small: overlapping 16-bit stereo windows require 192,000 input
+bandwidth is also small: overlapping 8-bit stereo windows require 96,000 input
 bytes/s, and 130 bytes per hop require 48,750 output bytes/s.
 
 ## 53. Auditory token adapter

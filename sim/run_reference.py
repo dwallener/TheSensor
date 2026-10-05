@@ -142,7 +142,7 @@ def process_audio_stream(left: list[int], right: list[int]) -> list[dict[str, ob
         right_window = right[start : start + WINDOW_SIZE]
         cells = process_window_fixed(left_window, right_window)
         records = [list(cell.as_bytes()) for cell in cells]
-        clipping = int(any(abs(value) >= 32767 for value in (*left_window, *right_window)))
+        clipping = int(any(value in (-128, 127) for value in (*left_window, *right_window)))
         slots.append((records, clipping))
         if len(slots) == 8:
             response = field_model.process(slots)
@@ -185,14 +185,14 @@ def synthetic_audio(duration: float) -> tuple[list[int], list[int]]:
         carrier = 2 * math.pi * (650 + 900 * time / duration) * time
         left_gain = active * modulation * (0.72 - 0.25 * pan)
         right_gain = active * modulation * (0.72 + 0.25 * pan)
-        left_sample = round(11_000 * left_gain * math.sin(carrier))
-        right_sample = round(11_000 * right_gain * math.sin(carrier + phase))
+        left_sample = round(43 * left_gain * math.sin(carrier))
+        right_sample = round(43 * right_gain * math.sin(carrier + phase))
         if abs(time - 0.48) < 0.0003:
-            impulse = 22_000 if sample & 1 else -22_000
+            impulse = 86 if sample & 1 else -86
             left_sample += impulse
             right_sample -= impulse
-        left.append(max(-32768, min(32767, left_sample)))
-        right.append(max(-32768, min(32767, right_sample)))
+        left.append(max(-128, min(127, left_sample)))
+        right.append(max(-128, min(127, right_sample)))
     return left, right
 
 

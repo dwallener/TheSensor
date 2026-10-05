@@ -1,7 +1,7 @@
 /*
  * STEREO_FILTERBANK_V0
  *
- * Input: 0xB0, then 128 little-endian signed PCM16 stereo sample pairs at 24 kHz.
+ * Input: 0xB0, then 128 signed PCM8 stereo sample pairs at 24 kHz.
  * Output: 0x5B, sixteen eight-byte band records, and one status byte.
  */
 
@@ -36,12 +36,10 @@ module stereo_filterbank_core (
   localparam [2:0] ST_OUTPUT  = 3'd5;
 
   reg [2:0] state;
-  reg [1:0] byte_phase;
+  reg channel_phase;
   reg [7:0] sample_index;
   reg [3:0] band_index;
   reg [3:0] operation;
-  reg [7:0] left_lsb;
-  reg [7:0] right_lsb;
   reg signed [11:0] left_input;
   reg signed [11:0] right_input;
 
@@ -442,12 +440,10 @@ module stereo_filterbank_core (
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= ST_IDLE;
-      byte_phase <= 0;
+      channel_phase <= 0;
       sample_index <= 0;
       band_index <= 0;
       operation <= 0;
-      left_lsb <= 0;
-      right_lsb <= 0;
       left_input <= 0;
       right_input <= 0;
       result_index <= 0;
@@ -480,7 +476,7 @@ module stereo_filterbank_core (
     end else begin
       case (state)
         ST_IDLE: begin
-          byte_phase <= 0;
+          channel_phase <= 0;
           sample_index <= 0;
           band_index <= 0;
           operation <= 0;
@@ -509,27 +505,20 @@ module stereo_filterbank_core (
 
         ST_LOAD: begin
           if (enable && input_valid) begin
-            case (byte_phase)
-              2'd0: begin left_lsb <= input_data; byte_phase <= 2'd1; end
-              2'd1: begin
-                left_input <= $signed({input_data, left_lsb}) >>> 4;
-                if ({input_data, left_lsb} == 16'h7fff
-                    || {input_data, left_lsb} == 16'h8000)
-                  clipping_seen <= 1;
-                byte_phase <= 2'd2;
-              end
-              2'd2: begin right_lsb <= input_data; byte_phase <= 2'd3; end
-              default: begin
-                right_input <= $signed({input_data, right_lsb}) >>> 4;
-                if ({input_data, right_lsb} == 16'h7fff
-                    || {input_data, right_lsb} == 16'h8000)
-                  clipping_seen <= 1;
-                byte_phase <= 0;
-                band_index <= 0;
-                operation <= 0;
-                state <= ST_PROCESS;
-              end
-            endcase
+            if (!channel_phase) begin
+              left_input <= $signed(input_data);
+              if ((input_data == 8'h7f) || (input_data == 8'h80))
+                clipping_seen <= 1;
+              channel_phase <= 1;
+            end else begin
+              right_input <= $signed(input_data);
+              if ((input_data == 8'h7f) || (input_data == 8'h80))
+                clipping_seen <= 1;
+              channel_phase <= 0;
+              band_index <= 0;
+              operation <= 0;
+              state <= ST_PROCESS;
+            end
           end
         end
 

@@ -53,8 +53,8 @@ by the fixed-point reference model.
 
 ### Auditory command `B0`
 
-Send 256 repetitions of four bytes: signed PCM16 left LSB/MSB, then signed PCM16
-right LSB/MSB. The core returns 130 bytes:
+Send 128 repetitions of two bytes: signed PCM8 left, then signed PCM8 right. The
+core returns 130 bytes:
 
 1. `5B` response marker
 2. sixteen low-to-high frequency-band records, each containing eight bytes:

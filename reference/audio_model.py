@@ -38,7 +38,6 @@ CENTER_FREQUENCIES = (
     8_000,
 )
 
-INPUT_SHIFT = 4  # signed PCM16 -> signed 12-bit processing sample
 COEFFICIENT_FRACTION_BITS = 12
 STATE_BITS = 26
 CORRELATION_SHIFT = 12
@@ -112,8 +111,8 @@ class AudioCell:
 def _validate_window(left: Sequence[int], right: Sequence[int]) -> None:
     if len(left) != WINDOW_SIZE or len(right) != WINDOW_SIZE:
         raise ValueError(f"each channel must contain exactly {WINDOW_SIZE} samples")
-    if any(sample < -32_768 or sample > 32_767 for sample in (*left, *right)):
-        raise ValueError("input samples must be signed 16-bit values")
+    if any(sample < -128 or sample > 127 for sample in (*left, *right)):
+        raise ValueError("input samples must be signed 8-bit values")
 
 
 def _saturate_signed(value: int, bits: int) -> int:
@@ -183,8 +182,8 @@ def process_window_fixed(left: Sequence[int], right: Sequence[int]) -> list[Audi
         for index, (left_pcm, right_pcm) in enumerate(zip(left, right)):
             if index == WINDOW_SIZE // 2:
                 left_half_s1 = left_half_s2 = right_half_s1 = right_half_s2 = 0
-            left_input = left_pcm >> INPUT_SHIFT
-            right_input = right_pcm >> INPUT_SHIFT
+            left_input = left_pcm
+            right_input = right_pcm
             left_state = _saturate_signed(
                 left_input + ((coefficient * left_s1) >> q) - left_s2,
                 STATE_BITS,
@@ -295,8 +294,8 @@ def process_window_float(left: Sequence[int], right: Sequence[int]) -> list[Audi
         for index, (left_pcm, right_pcm) in enumerate(zip(left, right)):
             if index == WINDOW_SIZE // 2:
                 left_half_s1 = left_half_s2 = right_half_s1 = right_half_s2 = 0.0
-            left_input = left_pcm / (1 << INPUT_SHIFT)
-            right_input = right_pcm / (1 << INPUT_SHIFT)
+            left_input = left_pcm
+            right_input = right_pcm
             left_state = left_input + coefficient * left_s1 - left_s2
             right_state = right_input + coefficient * right_s1 - right_s2
             left_s2, left_s1 = left_s1, left_state

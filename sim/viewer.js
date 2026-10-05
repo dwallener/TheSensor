@@ -48,7 +48,7 @@ function readouts(container,entries){container.innerHTML=entries.map(([name,valu
 
 function drawWaveform(time){
   const canvas=$('waveform'),context=clear(canvas),points=replay?.waveform||[],span=.12,start=time-span/2,end=time+span/2,visible=points.filter(point=>point[0]>=start&&point[0]<=end);context.strokeStyle='#34445a';context.beginPath();context.moveTo(0,canvas.height/2);context.lineTo(canvas.width,canvas.height/2);context.stroke();
-  for(const [channel,tint] of [[1,'#5fa8ff'],[2,'#ff6e7a']]){context.strokeStyle=tint;context.lineWidth=1.5;context.beginPath();visible.forEach((point,index)=>{const x=(point[0]-start)/span*canvas.width,y=canvas.height/2-point[channel]/32768*canvas.height*.44;index?context.lineTo(x,y):context.moveTo(x,y)});context.stroke()}context.fillStyle='#8293aa';context.font='12px ui-monospace';context.fillText(`${(span*1000).toFixed(0)} ms window`,9,17);
+  for(const [channel,tint] of [[1,'#5fa8ff'],[2,'#ff6e7a']]){context.strokeStyle=tint;context.lineWidth=1.5;context.beginPath();visible.forEach((point,index)=>{const x=(point[0]-start)/span*canvas.width,y=canvas.height/2-point[channel]/128*canvas.height*.44;index?context.lineTo(x,y):context.moveTo(x,y)});context.stroke()}context.fillStyle='#8293aa';context.font='12px ui-monospace';context.fillText(`${(span*1000).toFixed(0)} ms window`,9,17);
 }
 
 function drawCochlea(entry){

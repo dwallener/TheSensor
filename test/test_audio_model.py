@@ -16,7 +16,7 @@ from reference.audio_model import (
 )
 
 
-def tone(frequency, amplitude=12_000, phase=0.0):
+def tone(frequency, amplitude=47, phase=0.0):
     return [
         round(amplitude * math.sin(2 * math.pi * frequency * n / SAMPLE_RATE + phase))
         for n in range(WINDOW_SIZE)
@@ -80,8 +80,8 @@ def test_tones_peak_in_the_expected_bands_and_float_agrees():
 
 def test_level_difference_sign_points_toward_louder_ear():
     frequency = CENTER_FREQUENCIES[8]
-    quiet = tone(frequency, amplitude=4_000)
-    loud = tone(frequency, amplitude=16_000)
+    quiet = tone(frequency, amplitude=16)
+    loud = tone(frequency, amplitude=63)
     band = 8
     assert process_window_fixed(quiet, loud)[band].level_difference > 0
     assert process_window_fixed(loud, quiet)[band].level_difference < 0
@@ -112,13 +112,15 @@ def test_onset_and_offset_have_opposite_delta():
 
 def test_uncorrelated_noise_reduces_stereo_confidence():
     rng = random.Random(0xA0D10)
-    left = [rng.randrange(-12_000, 12_001) for _ in range(WINDOW_SIZE)]
-    unrelated = [rng.randrange(-12_000, 12_001) for _ in range(WINDOW_SIZE)]
+    left = [rng.randrange(-47, 48) for _ in range(WINDOW_SIZE)]
+    unrelated = [rng.randrange(-47, 48) for _ in range(WINDOW_SIZE)]
     coherent = process_window_fixed(left, left)
     incoherent = process_window_fixed(left, unrelated)
     coherent_mean = sum(cell.stereo_confidence for cell in coherent) / BAND_COUNT
     incoherent_mean = sum(cell.stereo_confidence for cell in incoherent) / BAND_COUNT
-    assert coherent_mean > incoherent_mean + 20
+    # PCM8 quantization narrows the margin, but coherent stereo must remain
+    # decisively more confident than two unrelated channels.
+    assert coherent_mean > incoherent_mean + 15
 
 
 def test_slot_and_frame_packing_are_canonical_size():

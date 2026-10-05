@@ -118,9 +118,11 @@ than the visual frame representation assembled by the host.
 
 The first conservative experiment keeps the sixteen-band response format but
 decimates the B0 input from 48 kHz to 24 kHz and changes its work unit from 256 to
-128 samples, retaining a 5.33 ms window and 50% overlap. This improves cycle
-margin and halves ingress bandwidth. It is not expected to materially reduce
-placement area because resonator state is per band, not per sample. If physical
+128 samples, retaining a 5.33 ms window and 50% overlap. The canonical B0 sample
+is also reduced from signed 16-bit to signed 8-bit PCM, supplied directly in the
+required scale. This improves cycle margin and quarters ingress bandwidth. It is
+not expected to materially reduce placement area because resonator state is per
+band, not per sample. If physical
 closure still fails, the next low-disruption area experiment is eight physical
 frequency bands; deeper state sharing remains deferred until those measurements
 are available.

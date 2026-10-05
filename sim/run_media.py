@@ -7,7 +7,6 @@ import argparse
 import json
 import random
 import shutil
-import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -89,13 +88,14 @@ def decode_audio(path: Path, start: float, duration: float) -> tuple[list[int], 
     raw = _run([
         "ffmpeg", "-v", "error", "-ss", f"{start:.6f}", "-i", str(path),
         "-t", f"{duration:.6f}", "-vn", "-ac", "2", "-ar", str(SAMPLE_RATE),
-        "-acodec", "pcm_s16le", "-f", "s16le", "pipe:1",
+        "-acodec", "pcm_s8", "-f", "s8", "pipe:1",
     ])
-    if len(raw) % 4:
+    if len(raw) % 2:
         raise RuntimeError("decoded audio ended with an incomplete stereo sample")
-    pairs = struct.iter_unpack("<hh", raw)
-    left, right = zip(*pairs) if raw else ((), ())
-    return list(left), list(right)
+    samples = [value - 256 if value & 0x80 else value for value in raw]
+    left = samples[0::2]
+    right = samples[1::2]
+    return left, right
 
 
 def generate(
