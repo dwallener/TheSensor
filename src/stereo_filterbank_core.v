@@ -55,8 +55,6 @@ module stereo_filterbank_core (
   reg [7:0] left_early_level [0:15];
   reg [7:0] left_late_level [0:15];
   reg [7:0] right_early_level [0:15];
-  reg [7:0] result [0:127];
-
   reg signed [27:0] temporary_real;
   reg signed [27:0] temporary_imag;
   reg signed [27:0] temporary_half_real;
@@ -65,7 +63,10 @@ module stereo_filterbank_core (
   reg signed [55:0] phase_cross;
   reg signed [55:0] dot_product;
 
-  reg [7:0] result_index;
+  // B0 is deliberately fire-and-forget.  A completed band is serialized
+  // directly from the retained summaries instead of being copied into a
+  // 128-byte response register file.
+  reg [3:0] result_index;
   reg clipping_seen;
   reg saturation_seen;
 
@@ -122,8 +123,6 @@ module stereo_filterbank_core (
       ? 8'd0 : 8'd255 - {level_mismatch[4:0], 3'b000};
   wire [7:0] final_confidence =
       ((confidence_gate < balance_gate) ? confidence_gate : balance_gate) >> 1;
-  wire [6:0] result_base = {band_index, 3'b000};
-
   integer i;
 
   function signed [13:0] resonator_for_band;
@@ -330,7 +329,7 @@ module stereo_filterbank_core (
         4'd0: begin multiply_a = cosine_coefficient; multiply_b = half_s2[band_index]; end
         default: begin multiply_a = sine_coefficient; multiply_b = half_s2[band_index]; end
       endcase
-    end else if (state == ST_FINAL) begin
+    end else if ((state == ST_FINAL) || (state == ST_OUTPUT)) begin
       case (operation)
         4'd0: begin multiply_a = cosine_coefficient; multiply_b = full_s2[band_index]; end
         4'd1: begin multiply_a = sine_coefficient; multiply_b = full_s2[band_index]; end
@@ -346,12 +345,23 @@ module stereo_filterbank_core (
 
   assign input_ready = enable && ((state == ST_IDLE) || (state == ST_LOAD));
   assign output_valid = enable && (state == ST_OUTPUT);
-  assign output_data = (result_index == 0) ? 8'h5b
-      : (result_index == 8'd129) ? {4'd0, error, saturation_seen, 1'b0, clipping_seen}
-      : result[result_index - 1'b1];
+  assign output_data = (result_index == 4'd0) ? 8'h5b
+      : (result_index == 4'd1) ? left_level[band_index]
+      : (result_index == 4'd2) ? final_right_level
+      : (result_index == 4'd3) ? final_mono_level
+      : (result_index == 4'd4) ? final_delta
+      : (result_index == 4'd5) ? (final_delta[7] ? 8'd0 : final_delta)
+      : (result_index == 4'd6) ? final_level_difference
+      : (result_index == 4'd7) ? final_phase
+      : (result_index == 4'd8) ? final_confidence
+      : {4'd0, error, saturation_seen, 1'b0, clipping_seen};
   assign output_first = output_valid && (result_index == 0);
-  assign output_last = output_valid && (result_index == 8'd129);
+  assign output_last = output_valid && (result_index == 4'd9);
   assign busy = (state != ST_IDLE);
+
+  // Kept in the module interface so the other command engines can retain the
+  // shared ready/valid pinout.  B0 intentionally does not consume readiness.
+  wire _unused_output_ready = output_ready;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -380,8 +390,6 @@ module stereo_filterbank_core (
         left_early_level[i] <= 0; left_late_level[i] <= 0;
         right_early_level[i] <= 0;
       end
-      for (i = 0; i < 128; i = i + 1)
-        result[i] <= 0;
     end else begin
       case (state)
         ST_IDLE: begin
@@ -499,32 +507,23 @@ module stereo_filterbank_core (
                 left_level[band_index] <= log_compress(
                     abs28(temporary_real) + abs28(temporary_imag));
                 left_late_level[band_index] <= final_late_level;
+                operation <= 0;
               end else begin
-                result[result_base] <= left_level[band_index];
-                result[result_base + 1] <= final_right_level;
-                result[result_base + 2] <= final_mono_level;
-                result[result_base + 3] <= final_delta;
-                result[result_base + 4] <= final_delta[7] ? 8'd0 : final_delta;
-                result[result_base + 5] <= final_level_difference;
-                result[result_base + 6] <= final_phase;
-                result[result_base + 7] <= final_confidence;
+                // Keep operation at seven while these final combinational
+                // values are serialized over the next eight clocks.
+                result_index <= (band_index == 0) ? 0 : 1;
+                state <= ST_OUTPUT;
               end
-              operation <= 0;
-              if (band_index == 15) begin
+              if (!channel_select && (band_index == 15)) begin
                 band_index <= 0;
-                if (!channel_select) begin
-                  channel_select <= 1;
-                  sample_index <= 0;
-                  for (i = 0; i < 16; i = i + 1) begin
-                    full_s1[i] <= 0; full_s2[i] <= 0;
-                    half_s1[i] <= 0; half_s2[i] <= 0;
-                  end
-                  state <= ST_LOAD;
-                end else begin
-                  result_index <= 0;
-                  state <= ST_OUTPUT;
+                channel_select <= 1;
+                sample_index <= 0;
+                for (i = 0; i < 16; i = i + 1) begin
+                  full_s1[i] <= 0; full_s2[i] <= 0;
+                  half_s1[i] <= 0; half_s2[i] <= 0;
                 end
-              end else begin
+                state <= ST_LOAD;
+              end else if (!channel_select) begin
                 band_index <= band_index + 1'b1;
               end
             end
@@ -532,10 +531,19 @@ module stereo_filterbank_core (
         end
 
         ST_OUTPUT: begin
-          if (enable && output_ready) begin
-            if (result_index == 8'd129) begin
+          if (enable) begin
+            if (result_index == 4'd9) begin
               result_index <= 0;
               state <= ST_IDLE;
+            end else if (result_index == 4'd8) begin
+              if (band_index == 15) begin
+                result_index <= 4'd9;
+              end else begin
+                band_index <= band_index + 1'b1;
+                operation <= 0;
+                result_index <= 1;
+                state <= ST_FINAL;
+              end
             end else begin
               result_index <= result_index + 1'b1;
             end

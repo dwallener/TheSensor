@@ -66,6 +66,11 @@ The fixed ERB-spaced bands run from 125 Hz through 8 kHz. Status bit 0 reports a
 exact full-scale input sample, bit 2 reports internal state saturation, and bit 3
 reports a command/configuration error. Other status bits are reserved as zero.
 
+Unlike the other commands, `B0` output is fire-and-forget. Its 130 bytes advance
+on consecutive valid clocks regardless of `output_ready`; missed bytes are
+dropped and are not retried. The receiver must reject an incomplete record and
+resynchronize at the next asserted `output_first` carrying a `5B` marker.
+
 ### Auditory-field command `B1`
 
 Send eight oldest-to-newest auditory slots. Each slot contains the 128 feature
@@ -91,7 +96,8 @@ the first implemented context path whose output depends on earlier work units.
 
 Set `ena` high. Present the input byte on `ui_in`, assert `uio_in[0]`, and wait for
 `uio_out[2]` (`input_ready`). To consume output, assert `uio_in[1]`
-(`output_ready`). `uio_out[3]` marks a valid byte; `uio_out[6]` and `uio_out[7]`
+(`output_ready`). `B0` is the exception and ignores this input while transmitting.
+`uio_out[3]` marks a valid byte; `uio_out[6]` and `uio_out[7]`
 mark the first and last response bytes. `uio_out[4]` reports busy and `uio_out[5]`
 reports an invalid command.
 

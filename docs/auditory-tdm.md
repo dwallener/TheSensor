@@ -74,11 +74,33 @@ audio retained by the acquisition controller.
 - A new B0 command resets resonator and retained-summary state.
 - Output remains marker `0x5B`, sixteen eight-byte band records, then status.
 - Bands remain ERB-spaced from 125 Hz through 8 kHz.
-- Backpressure may occur after every accepted sample or output byte.
+- Input backpressure may occur after every accepted sample.
+- B0 output is fire-and-forget: the marker, each completed eight-byte band
+  burst, and status advance without waiting for `output_ready`. `output_valid`
+  may be low between bands while the next band is finalized.
+- A receiver that cannot sample a valid output byte drops that byte. There is
+  no retry, replay, or partial-packet recovery in the ASIC.
+
+## Fire-and-forget serialization
+
+The filter bank does not construct a 128-byte registered response. Once the
+right-channel calculation for a band is final, its eight feature bytes are
+serialized directly from the retained left summaries and the current right
+summary. Processing then advances to the next band. The `0x5B` marker precedes
+band zero and the status byte follows band fifteen, preserving the established
+130-byte wire format.
+
+This deliberately treats observations as disposable sensor traffic. A receiver
+may drop bytes or a whole record; the ASIC never stalls computation to guarantee
+delivery. Hosts that require atomic records must capture all 130 valid cycles,
+reject an incomplete record, and resynchronize on the next
+`output_first`/`0x5B` pair.
+Removing the response register file saves 1,024 payload flip-flops plus its
+associated reset, clock, and mux logic.
 
 ## Verification
 
 The fixed-point reference model uses the same channel-major computation as RTL.
 Directed tests cover silence, tones, level asymmetry, phase lead, onset/offset,
-summary confidence, output backpressure, and integration with B1. Physical
+summary confidence, readiness-independent output, and integration with B1. Physical
 place-and-route remains the authority for final area, routing, and timing closure.

@@ -90,7 +90,23 @@ async def process_audio(dut, left, right, stall=False):
         await send_byte(dut, left_sample & 0xFF)
     for right_sample in right:
         await send_byte(dut, right_sample & 0xFF)
-    return await receive_response(dut, length=130, stall=stall)
+    result = []
+    cycle = 0
+    while len(result) < 130:
+        # B0 output is fire-and-forget. Toggle ready to prove that the sender
+        # neither stalls nor changes its byte stream when the receiver drops.
+        ready = not stall or cycle % 3 != 1
+        dut.uio_in.value = 0b10 if ready else 0
+        await Timer(1, unit="ns")
+        if _pin(dut.uio_out.value, 3):
+            assert _pin(dut.uio_out.value, 6) == (len(result) == 0)
+            assert _pin(dut.uio_out.value, 7) == (len(result) == 129)
+            result.append(int(dut.uo_out.value))
+        cycle += 1
+        assert cycle < 130 * 8
+        await RisingEdge(dut.clk)
+    dut.uio_in.value = 0
+    return result
 
 
 async def process_field(dut, records, stall=False):

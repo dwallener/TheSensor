@@ -197,7 +197,8 @@ module tt_um_dwallener_sensor (
           command_error <= 1'b1;
         end
       end
-    end else if (output_valid && uio_in[1] && output_last) begin
+    end else if (output_valid && output_last
+        && ((active_core == ACTIVE_AUDIO) || uio_in[1])) begin
       active_core <= ACTIVE_NONE;
     end
   end

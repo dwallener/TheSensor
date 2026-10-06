@@ -1765,6 +1765,16 @@ Band records are emitted from lowest to highest frequency. The response is exact
 arithmetic saturation, and configuration error. `output_first` marks `0x5B` and
 `output_last` marks the status byte.
 
+The B0 response SHALL be fire-and-forget. After processing a band, the core SHALL
+serialize that band directly from retained summaries and advance one byte per
+enabled clock without observing `output_ready`. It SHALL NOT allocate a complete
+128-byte payload register file, retry missed bytes, or hold a byte for a stalled
+receiver. A receiver MAY drop bytes or a complete observation; it MUST reject an
+incomplete record and resynchronize on a later asserted `output_first` carrying
+the `0x5B` marker. This exception to the shared ready/valid convention is
+deliberate: coherent computation is preserved, but delivery of disposable sensor
+observations is not guaranteed.
+
 Command `0xA0` SHALL retain its current visual meaning. A combined profile named
 `MULTISENSE_V0` SHALL dispatch `0xA0` to the visual kernel and `0xB0` to the
 auditory kernel while sharing the existing byte buses and handshake pins. V0 MAY
